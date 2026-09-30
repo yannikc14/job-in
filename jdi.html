@@ -436,8 +436,8 @@ footer.pub-footer{ border-top:1px solid var(--border); padding:44px 0 28px; marg
    modo demo local (los datos solo se guardan en tu propio navegador).
    ------------------------------------------------------------------ */
 var SUPABASE_CONFIG = {
-  url: "TU_SUPABASE_URL",
-  anonKey: "TU_SUPABASE_ANON_KEY"
+  url: "https://yhnakntkwuqwdhdubdrn.supabase.co",
+  anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlobmFrbnRrd3Vxd2RoZHViZHJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA3MjA2NTUsImV4cCI6MjEwNjI5NjY1NX0.ViPAl2D5shxHAGJ7K52rVc5zlCVf1CJTpdLx-V_uQLU"
 };
 var sb = null, SUPABASE_READY = false;
 try{
@@ -1384,6 +1384,7 @@ function doRegister(){
     var p1=byId('rp1').value, p2=byId('rp2').value;
     var ciudad=byId('rc-ciudad').value.trim(), telefono=byId('rc-telefono').value.trim();
     if(!nombre || !apellido){ authError='Ingresa tu nombre y apellido.'; render(); return; }
+    if(containsBadWords(nombre) || containsBadWords(apellido) || containsBadWords(ciudad)){ authError='Revisa tus datos: contienen lenguaje que no está permitido en Job-In.'; render(); return; }
     if(!email){ authError='Ingresa un correo electrónico.'; render(); return; }
     if(!SUPABASE_READY && db.candidates.some(function(c){return (c.email||'').toLowerCase()===email;})){ authError='Ya existe una cuenta de candidato con ese correo. Intenta iniciar sesión.'; render(); return; }
     if(!p1 || p1.length<6){ authError='La contraseña debe tener al menos 6 caracteres.'; render(); return; }
@@ -1421,6 +1422,7 @@ function doRegister(){
     var p3=byId('rp3').value;
     var ctelefono=byId('re-telefono').value.trim(), cciudad=byId('re-ciudad').value.trim(), sector=byId('re-sector').value;
     if(!cnombre){ authError='Ingresa el nombre de tu empresa.'; render(); return; }
+    if(containsBadWords(cnombre) || containsBadWords(cciudad)){ authError='Revisa los datos de tu empresa: contienen lenguaje que no está permitido en Job-In.'; render(); return; }
     if(!cemail){ authError='Ingresa un correo empresarial.'; render(); return; }
     if(!SUPABASE_READY && db.companies.some(function(c){return (c.correo||'').toLowerCase()===cemail;})){ authError='Ya existe una cuenta de empresa con ese correo. Intenta iniciar sesión.'; render(); return; }
     if(!p3 || p3.length<6){ authError='La contraseña debe tener al menos 6 caracteres.'; render(); return; }
@@ -1596,6 +1598,11 @@ function cvEditorSection(sec, c){
 function updateCvField(sec, i, field, value){
   var c = currentCandidate();
   if(!c) return;
+  if(containsBadWords(value)){
+    showToast('Ese texto contiene lenguaje que no está permitido en Job-In.');
+    render();
+    return;
+  }
   if(sec==='personal'){ c[field] = value; }
   else if(sec==='perfil'){ c.sobreMi = value; }
   else {
@@ -1622,6 +1629,7 @@ function removeCvItem(sec,i){
 function addSkill(){
   var v = document.getElementById('newSkill').value.trim();
   if(!v) return;
+  if(containsBadWords(v)){ showToast('Esa habilidad contiene lenguaje que no está permitido en Job-In.'); return; }
   currentCandidate().habilidades.push(v);
   saveDB(); render();
 }
@@ -1633,30 +1641,61 @@ function viewPreferences(){
   var tabs = [['laborales','Preferencias laborales'],['ubicacion','Ubicación'],['habilidades','Habilidades e intereses'],['notificaciones','Notificaciones'],['privacidad','Privacidad']];
   var body='';
   if(prefTab==='laborales') body = '<div class="glass" style="padding:22px;">'+
-    '<div class="grid2"><div class="field"><label>Tipo de empleo</label><select>'+['Tiempo completo','Medio tiempo','Freelance','Prácticas'].map(function(o){return '<option '+(p.tipoEmpleo===o?'selected':'')+'>'+o+'</option>';}).join('')+'</select></div>'+
-    '<div class="field"><label>Experiencia</label><input value="'+esc(p.experiencia)+'"></div></div>'+
-    '<div class="grid2" style="margin-top:14px;"><div class="field"><label>Salario esperado</label><input value="'+esc(p.salarioEsperado)+'"></div>'+
-    '<div class="field"><label>Horario</label><input value="'+esc(p.horario)+'"></div></div>'+
-    '<div class="field" style="margin-top:14px;"><label>Sectores de interés</label><input value="'+esc(p.sectores.join(', '))+'"></div></div>';
+    '<div class="grid2"><div class="field"><label>Tipo de empleo</label><select id="pf-tipoEmpleo">'+['Tiempo completo','Medio tiempo','Freelance','Prácticas'].map(function(o){return '<option '+(p.tipoEmpleo===o?'selected':'')+'>'+o+'</option>';}).join('')+'</select></div>'+
+    '<div class="field"><label>Experiencia</label><input id="pf-experiencia" value="'+esc(p.experiencia)+'"></div></div>'+
+    '<div class="grid2" style="margin-top:14px;"><div class="field"><label>Salario esperado</label><input id="pf-salario" value="'+esc(p.salarioEsperado)+'"></div>'+
+    '<div class="field"><label>Horario</label><input id="pf-horario" value="'+esc(p.horario)+'"></div></div>'+
+    '<div class="field" style="margin-top:14px;"><label>Sectores de interés</label><input id="pf-sectores" value="'+esc(p.sectores.join(', '))+'" placeholder="Ej. Tecnología, Marketing"></div></div>';
   else if(prefTab==='ubicacion') body = '<div class="glass" style="padding:22px;">'+
-    '<div class="grid2"><div class="field"><label>Ciudad</label><input value="'+esc(p.ciudad)+'"></div><div class="field"><label>Distancia máxima</label><input value="'+esc(p.distancia)+'"></div></div>'+
+    '<div class="grid2"><div class="field"><label>Ciudad</label><input id="pf-ciudad" value="'+esc(p.ciudad)+'"></div><div class="field"><label>Distancia máxima</label><input id="pf-distancia" value="'+esc(p.distancia)+'"></div></div>'+
     '<div style="margin-top:16px;">'+
-      '<label class="checkline"><input type="checkbox" '+(p.remoto?'checked':'')+'> Remoto</label>'+
-      '<label class="checkline"><input type="checkbox" '+(p.hibrido?'checked':'')+'> Híbrido</label>'+
-      '<label class="checkline"><input type="checkbox" '+(p.presencial?'checked':'')+'> Presencial</label>'+
+      '<label class="checkline"><input type="checkbox" id="pf-remoto" '+(p.remoto?'checked':'')+'> Remoto</label>'+
+      '<label class="checkline"><input type="checkbox" id="pf-hibrido" '+(p.hibrido?'checked':'')+'> Híbrido</label>'+
+      '<label class="checkline"><input type="checkbox" id="pf-presencial" '+(p.presencial?'checked':'')+'> Presencial</label>'+
     '</div></div>';
   else if(prefTab==='habilidades') body = '<div class="glass" style="padding:22px;"><p class="muted" style="font-size:0.86rem;margin-bottom:12px;">Estas habilidades se usan para calcular tu Job-In Match.</p>'+c.habilidades.map(function(h){return '<span class="skill-chip">'+esc(h)+'</span>';}).join('')+'<div style="margin-top:14px;"><button class="btn btn-ghost btn-sm" onclick="go(\'#/cv\')">'+icon('edit',14)+' Editar en mi hoja de vida</button></div></div>';
   else if(prefTab==='notificaciones') body = '<div class="glass" style="padding:22px;">'+
-    '<label class="checkline"><input type="checkbox" '+(p.notifJobs?'checked':'')+'> Notificarme sobre nuevas ofertas que coincidan conmigo</label>'+
-    '<label class="checkline"><input type="checkbox" '+(p.notifMensajes?'checked':'')+'> Notificarme cuando reciba un mensaje</label>'+
-    '<label class="checkline"><input type="checkbox" '+(p.notifEmail?'checked':'')+'> Recibir notificaciones también por correo electrónico</label></div>';
+    '<label class="checkline"><input type="checkbox" id="pf-notifJobs" '+(p.notifJobs?'checked':'')+'> Notificarme sobre nuevas ofertas que coincidan conmigo</label>'+
+    '<label class="checkline"><input type="checkbox" id="pf-notifMensajes" '+(p.notifMensajes?'checked':'')+'> Notificarme cuando reciba un mensaje</label>'+
+    '<label class="checkline"><input type="checkbox" id="pf-notifEmail" '+(p.notifEmail?'checked':'')+'> Recibir notificaciones también por correo electrónico</label></div>';
   else if(prefTab==='privacidad') body = '<div class="glass" style="padding:22px;">'+
-    '<label class="checkline"><input type="checkbox" '+(p.perfilPublico?'checked':'')+'> Permitir que las empresas encuentren mi perfil</label>'+
+    '<label class="checkline"><input type="checkbox" id="pf-perfilPublico" '+(p.perfilPublico?'checked':'')+'> Permitir que las empresas encuentren mi perfil</label>'+
     '<label class="checkline"><input type="checkbox"> Ocultar mi información de contacto hasta que yo me postule</label></div>';
   return '<div class="section-head"><h2>Preferencias</h2></div>'+
     '<div class="tabs" style="margin-bottom:20px;flex-wrap:wrap;">'+tabs.map(function(t){return '<button class="tab-btn '+(prefTab===t[0]?'active':'')+'" onclick="prefTab=\''+t[0]+'\';render()">'+t[1]+'</button>';}).join('')+'</div>'+
     body+
-    '<button class="btn btn-primary" style="margin-top:18px;" onclick="showToast(\'Preferencias guardadas\')">Guardar preferencias</button>';
+    '<button class="btn btn-primary" style="margin-top:18px;" onclick="savePreferences()">Guardar preferencias</button>';
+}
+function savePreferences(){
+  var c = currentCandidate(); if(!c) return;
+  var p = c.preferencias;
+  function val(id){ var el=byId(id); return el ? el.value : undefined; }
+  function checked(id){ var el=byId(id); return el ? el.checked : undefined; }
+
+  var textsToCheck = [val('pf-experiencia'), val('pf-salario'), val('pf-horario'), val('pf-sectores'), val('pf-ciudad'), val('pf-distancia')].filter(function(v){return v!==undefined;});
+  if(textsToCheck.some(containsBadWords)){
+    showToast('Revisa lo que escribiste: contiene lenguaje que no está permitido en Job-In.');
+    return;
+  }
+
+  if(byId('pf-tipoEmpleo')) p.tipoEmpleo = val('pf-tipoEmpleo');
+  if(byId('pf-experiencia')) p.experiencia = val('pf-experiencia').trim();
+  if(byId('pf-salario')) p.salarioEsperado = val('pf-salario').trim();
+  if(byId('pf-horario')) p.horario = val('pf-horario').trim();
+  if(byId('pf-sectores')) p.sectores = val('pf-sectores').split(',').map(function(s){return s.trim();}).filter(Boolean);
+  if(byId('pf-ciudad')) p.ciudad = val('pf-ciudad').trim();
+  if(byId('pf-distancia')) p.distancia = val('pf-distancia').trim();
+  if(byId('pf-remoto')) p.remoto = checked('pf-remoto');
+  if(byId('pf-hibrido')) p.hibrido = checked('pf-hibrido');
+  if(byId('pf-presencial')) p.presencial = checked('pf-presencial');
+  if(byId('pf-notifJobs')) p.notifJobs = checked('pf-notifJobs');
+  if(byId('pf-notifMensajes')) p.notifMensajes = checked('pf-notifMensajes');
+  if(byId('pf-notifEmail')) p.notifEmail = checked('pf-notifEmail');
+  if(byId('pf-perfilPublico')) p.perfilPublico = checked('pf-perfilPublico');
+
+  saveDB();
+  render();
+  showToast('Preferencias guardadas');
 }
 
 /* ================= APPLICATIONS ================= */
@@ -1805,6 +1844,11 @@ function splitCommas(v){ return v.split(',').map(function(s){return s.trim();}).
 function submitCompanyJob(e){
   e.preventDefault();
   var comp = currentCompany();
+  var textsToCheck = [byId('pj2-title').value, byId('pj2-area').value, byId('pj2-desc').value, byId('pj2-func').value, byId('pj2-req').value, byId('pj2-benef').value, byId('pj2-loc').value];
+  if(textsToCheck.some(containsBadWords)){
+    showToast('Revisa el texto de la oferta: contiene lenguaje que no está permitido en Job-In.');
+    return;
+  }
   var job = {
     id:'job'+Date.now(), title:byId('pj2-title').value, companyId:comp.id, area:byId('pj2-area').value, vacantes:Number(byId('pj2-vac').value)||1,
     modalidad:byId('pj2-mod').value, ubicacion:byId('pj2-loc').value, tipoContrato:byId('pj2-contract').value, jornada:byId('pj2-jornada').value, horario:byId('pj2-horario').value||'A convenir',
