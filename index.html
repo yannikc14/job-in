@@ -953,7 +953,7 @@ function layoutApp(role, active, content){
   return '<div class="app-shell">'+
     '<aside class="sidebar'+(sidebarCollapsed?' collapsed':'')+'">'+
       '<div class="side-logo">'+
-        '<a href="'+(isAdmin?'#/':(isCand?'#/dashboard':'#/company'))+'" style="display:flex;align-items:center;min-width:0;"><img class="logo-icon-img" src="'+LOGO_ICON+'" alt="Job-In"></a>'+
+        '<a href="#/" style="display:flex;align-items:center;min-width:0;"><img class="logo-icon-img" src="'+LOGO_ICON+'" alt="Job-In"></a>'+
         '<button class="side-collapse-btn" onclick="toggleSidebar()" title="'+(sidebarCollapsed?'Expandir menú':'Contraer menú')+'"><span style="display:inline-flex;transform:rotate('+(sidebarCollapsed?'0':'180')+'deg);">'+icon('chevronRight',16)+'</span></button>'+
         '<button class="side-drawer-close" onclick="closeDrawers()" title="Cerrar menú">'+icon('close',16)+'</button>'+
       '</div>'+
