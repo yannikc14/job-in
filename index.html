@@ -439,13 +439,8 @@ footer.pub-footer{ border-top:1px solid var(--border); padding:44px 0 28px; marg
 /* ------------------------------------------------------------------
    CONFIGURA AQUI TU PROYECTO DE SUPABASE
    1) Ve a https://supabase.com y crea un proyecto (gratis).
-   2) En el editor SQL de tu proyecto, ejecuta:
-        create table app_state (id text primary key, data jsonb);
-        alter table app_state enable row level security;
-        create policy "public read/write demo" on app_state
-          for all using (true) with check (true);
-      (La politica de arriba es abierta, a modo de demo. Mas adelante
-      conviene restringirla -- te ayudo con eso cuando lo necesites.)
+   2) En el editor SQL de tu proyecto, pega y ejecuta TODO el archivo
+      supabase-setup.sql (crea las tablas, los permisos por usuario y el anti-spam).
    3) En Authentication -> Providers, confirma que "Email" esta activado
       (viene activado por defecto).
    4) En Configuracion del proyecto -> API, copia el "Project URL" y la
@@ -469,6 +464,7 @@ function translateSupabaseError(err){
   var m = msg.toLowerCase();
   if(m.indexOf('already registered')!==-1 || m.indexOf('already exists')!==-1) return 'Ya existe una cuenta con ese correo. Intenta iniciar sesion.';
   if(m.indexOf('invalid login credentials')!==-1) return 'El correo o la contrasena son incorrectos.';
+  if(m.indexOf('email not confirmed')!==-1) return 'Debes confirmar tu correo antes de entrar. Revisa tu bandeja de entrada (y la carpeta de spam).';
   if(m.indexOf('password')!==-1 && (m.indexOf('short')!==-1 || m.indexOf('at least')!==-1)) return 'La contrasena debe tener al menos 6 caracteres.';
   if(m.indexOf('invalid email')!==-1 || m.indexOf('unable to validate email')!==-1) return 'El correo electronico no es valido.';
   if(m.indexOf('rate limit')!==-1 || m.indexOf('too many')!==-1) return 'Demasiados intentos. Espera un momento e intentalo de nuevo.';
@@ -648,17 +644,27 @@ function seedDB(){
       ]}
     ],
     notifications: [
-      { id:'n1', text:'NovaTech vio tu perfil.', fecha:days(1), leida:false },
-      { id:'n2', text:'Hay una nueva oferta que coincide contigo: Analista de Datos en DataPro S.A.S.', fecha:days(2), leida:false },
-      { id:'n3', text:'Tu postulación a Desarrollador Frontend avanzó a entrevista.', fecha:days(3), leida:false },
-      { id:'n4', text:'PixelMind Studio te envió un mensaje.', fecha:days(1), leida:true },
-      { id:'n5', text:'Tu perfil tiene 85% de completitud. Complétalo para mejorar tu Match.', fecha:days(7), leida:true }
+      { userId:'cand1', id:'n1', text:'NovaTech vio tu perfil.', fecha:days(1), leida:false },
+      { userId:'cand1', id:'n2', text:'Hay una nueva oferta que coincide contigo: Analista de Datos en DataPro S.A.S.', fecha:days(2), leida:false },
+      { userId:'cand1', id:'n3', text:'Tu postulación a Desarrollador Frontend avanzó a entrevista.', fecha:days(3), leida:false },
+      { userId:'cand1', id:'n4', text:'PixelMind Studio te envió un mensaje.', fecha:days(1), leida:true },
+      { userId:'cand1', id:'n5', text:'Tu perfil tiene 85% de completitud. Complétalo para mejorar tu Match.', fecha:days(7), leida:true }
     ],
     savedJobs: { cand1: ['job6'] }
   };
 }
 
 var db;
+var remoteError = '';
+var loadedForUid = null;
+var syncTimer = null, syncing = false, syncDirty = false, syncPromise = Promise.resolve();
+var syncSnap = {};
+
+function genId(prefix){ return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function fmtDate(iso){ try{ return new Date(iso).toLocaleDateString('es-CO',{day:'2-digit',month:'short'}); }catch(e){ return ''; } }
+function emptyRemoteDB(){ return {session:null, isAdmin:false, candidates:[], companies:[], jobs:[], applications:[], threads:[], notifications:[], savedJobs:{}}; }
+
+/* ---------- Modo local (sin Supabase): todo en localStorage, como antes ---------- */
 function loadDB(cb){
   if(!SUPABASE_READY){
     try{
@@ -669,53 +675,175 @@ function loadDB(cb){
     cb && cb();
     return;
   }
-  sb.from('app_state').select('data').eq('id','shared_state').maybeSingle().then(function(res){
-    if(res.error){ throw res.error; }
-    if(res.data && res.data.data){
-      db = res.data.data;
-    } else {
-      db = seedDB();
-      var toSave = Object.assign({}, db);
-      delete toSave.session;
-      sb.from('app_state').upsert({id:'shared_state', data:toSave}).then(function(){});
-    }
-    db.session = null;
+  db = emptyRemoteDB();
+  (async function(){
+    try{
+      var s = await sb.auth.getSession();
+      loadedForUid = (s && s.data && s.data.session && s.data.session.user) ? s.data.session.user.id : null;
+      await refreshData();
+    }catch(err){ console.error(err); remoteError = (err && err.message) || 'error desconocido'; }
     cb && cb();
-  }).catch(function(err){
-    console.error('Error cargando datos de Supabase:', err);
-    db = seedDB();
-    db.session = null;
-    cb && cb();
-  });
+  })();
 }
 function saveDB(){
   if(!SUPABASE_READY){
     try{ window.localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
     return;
   }
-  var toSave = Object.assign({}, db);
-  delete toSave.session;
-  sb.from('app_state').upsert({id:'shared_state', data:toSave}).then(function(res){
-    if(res.error){
-      console.error('Error guardando en Supabase:', res.error);
-      showToast('No se pudo guardar en la nube (revisa tu configuracion de Supabase)');
-    }
-  });
+  scheduleSync();
 }
 function resetDB(){
-  if(!confirm(SUPABASE_READY ? 'Restablecer los datos de demostracion para TODAS las personas que usan esta plataforma?' : 'Restablecer los datos de demostracion en este navegador?')) return;
-  db = seedDB();
-  var toSave = Object.assign({}, db);
-  delete toSave.session;
-  db.session = null;
-  if(!SUPABASE_READY){
-    try{ window.localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
-  } else {
-    sb.from('app_state').upsert({id:'shared_state', data:toSave}).then(function(){});
-  }
+  if(SUPABASE_READY){ showToast('Esta acción solo existe en modo local.'); return; }
+  if(!confirm('Restablecer los datos de demostración en este navegador?')) return;
+  db = seedDB(); db.session = null;
+  try{ window.localStorage.setItem(DB_KEY, JSON.stringify(db)); }catch(e){}
   location.hash = '#/';
   render();
-  showToast('Datos de demostracion restablecidos');
+  showToast('Datos de demostración restablecidos');
+}
+
+/* ---------- Modo Supabase: tablas reales + sincronización por fila ---------- */
+function stripKeys(o, keys){ var d = Object.assign({}, o); keys.forEach(function(k){ delete d[k]; }); return d; }
+var SYNC_DEFS = {
+  candidates:   { rows:function(){ return db.candidates.map(function(o){ return {id:o.id, data:stripKeys(o,['id'])}; }); } },
+  companies:    { rows:function(){ return db.companies.map(function(o){ return {id:o.id, data:stripKeys(o,['id'])}; }); } },
+  jobs:         { rows:function(){ return db.jobs.map(function(o){ return {id:o.id, company_id:o.companyId, data:stripKeys(o,['id','createdAt'])}; }); } },
+  applications: { rows:function(){ return db.applications.map(function(o){ var j=jobById(o.jobId); return {id:o.id, job_id:o.jobId, candidate_id:o.candidateId, company_id:j?j.companyId:null, data:stripKeys(o,['id','createdAt'])}; }); } },
+  threads:      { rows:function(){ return db.threads.map(function(t){ return {id:t.id, company_id:t.companyId, candidate_id:t.candidateId}; }); } },
+  messages:     { insertOnly:true, rows:function(){ var out=[]; db.threads.forEach(function(t){ (t.messages||[]).forEach(function(m){ if(!m.id) m.id=genId('m'); out.push({id:m.id, thread_id:t.id, sender_role:m.from, body:m.text}); }); }); return out; } },
+  notifications:{ rows:function(){ return db.notifications.map(function(n){ return {id:n.id, user_id:n.userId, data:{text:n.text, leida:!!n.leida}}; }); } }
+};
+var SYNC_ORDER = ['candidates','companies','jobs','applications','threads','messages','notifications'];
+
+function savedPairs(){
+  var out = {};
+  Object.keys(db.savedJobs||{}).forEach(function(cid){ (db.savedJobs[cid]||[]).forEach(function(jid){ out[cid+'|'+jid] = {candidate_id:cid, job_id:jid}; }); });
+  return out;
+}
+function buildSnapshot(){
+  var snap = {};
+  SYNC_ORDER.forEach(function(name){
+    snap[name] = {};
+    SYNC_DEFS[name].rows().forEach(function(r){ snap[name][r.id] = JSON.stringify(r); });
+  });
+  snap.saved_jobs = {};
+  var sp = savedPairs(); Object.keys(sp).forEach(function(k){ snap.saved_jobs[k] = 1; });
+  return snap;
+}
+function scheduleSync(){
+  if(!SUPABASE_READY) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(function(){ syncTimer = null; syncNow(); }, 400);
+}
+function syncNow(){
+  if(!SUPABASE_READY || !db.session) return Promise.resolve();
+  if(syncing){ syncDirty = true; return syncPromise; }
+  syncing = true;
+  syncPromise = doSync().catch(function(err){
+    console.error('Error de sincronización:', err);
+    showToast('No se pudo guardar en la nube: ' + ((err && err.message) || 'error desconocido'));
+  }).then(function(){
+    syncing = false;
+    if(syncDirty){ syncDirty = false; return syncNow(); }
+  });
+  return syncPromise;
+}
+async function doSync(){
+  var firstError = null;
+  for(var i=0;i<SYNC_ORDER.length;i++){
+    var name = SYNC_ORDER[i], def = SYNC_DEFS[name];
+    var snap = syncSnap[name] || (syncSnap[name] = {});
+    try{
+      var cur = {}; def.rows().forEach(function(r){ cur[r.id] = r; });
+      var up = [], del = [];
+      var strs = {};
+      Object.keys(cur).forEach(function(id){
+        strs[id] = JSON.stringify(cur[id]);
+        if(def.insertOnly ? !(id in snap) : snap[id] !== strs[id]) up.push(cur[id]);
+      });
+      if(!def.insertOnly) Object.keys(snap).forEach(function(id){ if(!cur[id]) del.push(id); });
+      if(up.length){
+        var res = def.insertOnly ? await sb.from(name).insert(up) : await sb.from(name).upsert(up);
+        if(res.error) throw new Error(name + ': ' + res.error.message);
+        up.forEach(function(r){ snap[r.id] = strs[r.id]; });
+      }
+      if(del.length){
+        var res2 = await sb.from(name).delete().in('id', del);
+        if(res2.error) throw new Error(name + ': ' + res2.error.message);
+        del.forEach(function(id){ delete snap[id]; });
+      }
+    }catch(err){ if(!firstError) firstError = err; }
+  }
+  try{
+    var cs = savedPairs(), ss = syncSnap.saved_jobs || (syncSnap.saved_jobs = {});
+    var ins = Object.keys(cs).filter(function(k){ return !ss[k]; });
+    var rem = Object.keys(ss).filter(function(k){ return !cs[k]; });
+    if(ins.length){
+      var r3 = await sb.from('saved_jobs').upsert(ins.map(function(k){ return cs[k]; }), {onConflict:'candidate_id,job_id'});
+      if(r3.error) throw new Error('saved_jobs: ' + r3.error.message);
+      ins.forEach(function(k){ ss[k] = 1; });
+    }
+    for(var j=0;j<rem.length;j++){
+      var parts = rem[j].split('|');
+      var r4 = await sb.from('saved_jobs').delete().eq('candidate_id', parts[0]).eq('job_id', parts[1]);
+      if(r4.error) throw new Error('saved_jobs: ' + r4.error.message);
+      delete ss[rem[j]];
+    }
+  }catch(err2){ if(!firstError) firstError = err2; }
+  if(firstError) throw firstError;
+}
+async function refreshData(){
+  var tbl = function(t, orderCol, asc){ var b = sb.from(t).select('*'); if(orderCol) b = b.order(orderCol, {ascending: !!asc}); return b; };
+  var res = await Promise.all([
+    tbl('candidates'), tbl('companies'), tbl('jobs','created_at',false), tbl('applications','created_at',false),
+    tbl('threads'), tbl('messages','created_at',true), tbl('notifications','created_at',false), tbl('saved_jobs')
+  ]);
+  var bad = res.filter(function(r){ return r.error; })[0];
+  if(bad){ remoteError = bad.error.message || 'error desconocido'; return false; }
+  remoteError = '';
+  var n = emptyRemoteDB(); n.session = db.session; n.isAdmin = db.isAdmin;
+  n.candidates = res[0].data.map(function(r){ return Object.assign({id:r.id}, r.data); });
+  n.companies  = res[1].data.map(function(r){ return Object.assign({id:r.id}, r.data); });
+  n.jobs = res[2].data.map(function(r){ return Object.assign({id:r.id}, r.data, {companyId:r.company_id, createdAt:r.created_at}); });
+  n.applications = res[3].data.map(function(r){ return Object.assign({id:r.id}, r.data, {jobId:r.job_id, candidateId:r.candidate_id, createdAt:r.created_at}); });
+  var tmap = {};
+  n.threads = res[4].data.map(function(r){ var t = {id:r.id, companyId:r.company_id, candidateId:r.candidate_id, messages:[]}; tmap[r.id] = t; return t; });
+  res[5].data.forEach(function(m){ var t = tmap[m.thread_id]; if(t) t.messages.push({id:m.id, from:m.sender_role, text:m.body, fecha:fmtDate(m.created_at)}); });
+  n.notifications = res[6].data.map(function(r){ var d = r.data || {}; return {id:r.id, userId:r.user_id, text:d.text||'', leida:!!d.leida, fecha:fmtDate(r.created_at)}; });
+  res[7].data.forEach(function(r){ (n.savedJobs[r.candidate_id] = n.savedJobs[r.candidate_id] || []).push(r.job_id); });
+  db = n;
+  syncSnap = buildSnapshot();
+  return true;
+}
+async function checkAdminFlag(uid){
+  try{
+    var r = await sb.from('admins').select('user_id').eq('user_id', uid).maybeSingle();
+    db.isAdmin = !!(r && r.data);
+  }catch(e){ db.isAdmin = false; }
+}
+function startPolling(){
+  setInterval(async function(){
+    if(!SUPABASE_READY || !db.session || document.hidden || syncing || syncTimer) return;
+    var ae = document.activeElement;
+    if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.value) return;
+    var ok = false;
+    try{ ok = await refreshData(); }catch(e){}
+    if(!ok) return;
+    var seg = currentRoute()[0] || '';
+    if(['messages','notifications','applications','candidates','pipeline','dashboard','company','my-jobs'].indexOf(seg) !== -1){
+      var y = window.scrollY; render(); window.scrollTo(0, y);
+    }
+  }, 25000);
+}
+function notify(userId, text){
+  if(!userId || String(userId).indexOf('jobin-support') === 0) return;
+  var dup = db.notifications.some(function(n){ return n.userId===userId && !n.leida && n.text===text; });
+  if(dup) return;
+  db.notifications.unshift({id:genId('n'), userId:userId, text:text, fecha:'Ahora', leida:false});
+}
+function myNotifications(){
+  if(!db.session) return [];
+  return db.notifications.filter(function(n){ return n.userId === db.session.id; });
 }
 
 /* ---------------- helpers ---------------- */
@@ -754,6 +882,9 @@ function populateCityDatalist(){
 function money(n){ return '$' + Number(n).toLocaleString('es-CO'); }
 function companyOf(job){ return db.companies.find(function(c){return c.id===job.companyId;}); }
 function jobById(id){ return db.jobs.find(function(j){return j.id===id;}); }
+function jobIsActive(j){ return !j.estado || j.estado==='activa'; }
+function activeJobs(){ return db.jobs.filter(jobIsActive); }
+var lastJobSource = 'Directo';
 function candidateById(id){ return db.candidates.find(function(c){return c.id===id;}); }
 function currentCandidate(){ return db.session && db.session.role==='candidate' ? candidateById(db.session.id) : null; }
 function currentCompany(){ return db.session && db.session.role==='company' ? db.companies.find(function(c){return c.id===db.session.id;}) : null; }
@@ -853,10 +984,16 @@ function requireAuth(role){
 
 function render(){
   closeDrawers();
+  if(remoteError){
+    document.getElementById('root').innerHTML = layoutAuth(viewRemoteError());
+    hideBootLoader();
+    return;
+  }
   var parts = currentRoute();
   var root = document.getElementById('root');
   var seg = parts[0] || '';
   var html = '';
+  if(seg!=='job'){ lastJobSource = (seg==='jobs'||seg==='candidate-search') ? 'Búsqueda' : ((seg==='recommendations'||seg==='dashboard') ? 'Recomendaciones' : 'Directo'); }
 
   if(seg==='' ) html = layoutPublic(viewHome());
   else if(seg==='jobs') html = layoutPublic(viewJobs());
@@ -864,6 +1001,7 @@ function render(){
   else if(seg==='login') html = layoutAuth(viewLogin());
   else if(seg==='register') html = layoutAuth(viewRegister());
   else if(seg==='reset-password') html = layoutAuth(viewResetPassword());
+  else if(seg==='check-email') html = layoutAuth(viewCheckEmail());
   else if(seg==='terms') html = layoutPublic(viewTerms());
   else if(seg==='privacy') html = layoutPublic(viewPrivacy());
   else if(seg==='companies') html = layoutPublic(viewCompanies());
@@ -886,7 +1024,7 @@ function render(){
   else if(seg==='pipeline'){ if(!requireAuth('company'))return; html = layoutApp('company','pipeline', viewPipeline()); }
   else if(seg==='company-profile'){ if(!requireAuth('company'))return; html = layoutApp('company','company-profile', viewCompanyProfile()); }
   else if(seg==='company-stats'){ if(!requireAuth('company'))return; html = layoutApp('company','company-stats', viewCompanyStats()); }
-  else if(seg==='admin') html = isAdminUnlocked() ? layoutApp('admin','admin', viewAdmin()) : layoutAuth(viewAdminGate());
+  else if(seg==='admin') html = (SUPABASE_READY && db.isAdmin) ? layoutApp('admin','admin', viewAdmin()) : layoutAuth(viewAdminGate());
   else html = layoutPublic('<div class="wrap section"><div class="empty-state glass">'+icon('search',34)+'<strong>Página no encontrada</strong>Esa sección no existe.</div></div>');
 
   root.innerHTML = html;
@@ -902,7 +1040,12 @@ function hideBootLoader(){
 }
 
 function afterRenderHooks(){
-  // details filter toggle chevrons auto-handled by CSS [open]
+  if(currentRoute()[0]==='register' && regDraft){
+    Object.keys(regDraft).forEach(function(k){
+      var el = document.getElementById(k); if(!el) return;
+      if(el.type==='checkbox') el.checked = !!regDraft[k]; else el.value = regDraft[k];
+    });
+  }
 }
 
 /* ================= LAYOUTS ================= */
@@ -964,7 +1107,7 @@ function footerHTML(){
       '<div><h5>Cuenta</h5><a href="#/login">Iniciar sesión</a><a href="#/register">Crear cuenta</a><a href="#/about">Sobre nosotros</a></div>'+
       '<div><h5>Legal</h5><a href="#/terms">Términos de uso</a><a href="#/privacy">Privacidad</a><a href="#/admin">Panel administrativo</a></div>'+
     '</div>'+
-    '<div class="foot-bottom"><span>© 2026 Job-In. Plataforma de demostración — las ofertas y empresas mostradas son ficticias. '+(SUPABASE_READY?'<span style="color:var(--accent);">● Conectado a Supabase — datos compartidos entre usuarios.</span>':'<span>● Modo local — los datos solo se guardan en este navegador. Configura Supabase en el código para compartirlos.</span>')+'</span><button class="btn-ghost btn btn-sm" onclick="resetDB()">Restablecer datos demo</button></div>'+
+    '<div class="foot-bottom"><span>© 2026 Job-In. Plataforma de demostración — las ofertas y empresas mostradas son ficticias. '+(SUPABASE_READY?'<span style="color:var(--accent);">● Conectado a Supabase — datos compartidos entre usuarios.</span>':'<span>● Modo local — los datos solo se guardan en este navegador. Configura Supabase en el código para compartirlos.</span>')+'</span>'+(SUPABASE_READY?'':'<button class="btn-ghost btn btn-sm" onclick="resetDB()">Restablecer datos demo</button>')+'</div>'+
   '</div></footer>';
 }
 
@@ -1002,7 +1145,7 @@ function sideNavAdmin(active){
 
 function layoutApp(role, active, content){
   var isCand = role==='candidate', isComp = role==='company', isAdmin = role==='admin';
-  var unreadNotif = db.notifications.filter(function(n){return !n.leida;}).length;
+  var unreadNotif = myNotifications().filter(function(n){return !n.leida;}).length;
   var unreadMsg = 1;
   var who = isCand ? currentCandidate() : (isComp ? currentCompany() : {nombre:'Administrador'});
   var nameShown = isCand ? (who.nombre+' '+who.apellido) : who.nombre;
@@ -1038,7 +1181,7 @@ function layoutApp(role, active, content){
 
 function logout(){
   if(SUPABASE_READY){
-    sb.auth.signOut().then(function(){ db.session=null; go('#/'); render(); showToast('Sesion cerrada'); });
+    sb.auth.signOut().then(function(){ db.session=null; db.isAdmin=false; go('#/'); render(); showToast('Sesion cerrada'); });
   } else {
     db.session=null; saveDB(); go('#/'); render(); showToast('Sesion cerrada');
   }
@@ -1069,7 +1212,7 @@ function heroVisualSVG(){
 }
 
 function viewHome(){
-  var featured = db.jobs.slice(0,6);
+  var featured = activeJobs().slice(0,6);
   var cats = ['Tecnología','Marketing','Diseño','Administración','Ingeniería','Salud','Educación','Ventas','Atención al cliente'];
   return ''+
   '<section class="hero wrap"><div class="hero-grid">'+
@@ -1113,7 +1256,7 @@ function viewCompanies(){
   return '<section class="wrap section">'+
     '<div class="section-head"><h2>Empresas en Job-In</h2><span class="muted">'+visibleCompanies.length+' empresas registradas (demo)</span></div>'+
     '<div class="grid3">'+visibleCompanies.map(function(c){
-      var openJobs = db.jobs.filter(function(j){return j.companyId===c.id;}).length;
+      var openJobs = activeJobs().filter(function(j){return j.companyId===c.id;}).length;
       return '<div class="glass" style="padding:22px;">'+
         '<div class="row gap12">'+companyLogoHTML(c,'width:52px;height:52px;font-size:1.2rem;')+
         '<div><div style="font-weight:700;">'+esc(c.nombre)+'</div>'+(c.verificada?'<span class="badge-verified">'+icon('verified',13)+' Empresa verificada</span>':'')+'</div></div>'+
@@ -1150,7 +1293,7 @@ function viewAbout(){
 
 /* ================= SEARCH / JOBS ================= */
 function filtersPanelHTML(){
-  var jobCities = db.jobs.map(function(j){return j.ubicacion;});
+  var jobCities = activeJobs().map(function(j){return j.ubicacion;});
   var cities = Array.from(new Set(COLOMBIA_CITIES.concat(jobCities))).sort(function(a,b){return a.localeCompare(b,'es');});
   return '<div class="filters-panel glass">'+
     '<div class="row between" style="margin-bottom:8px;"><h4>Filtrar por</h4><button class="btn-ghost btn btn-sm" style="display:none;" id="mobileCloseFilters" onclick="closeDrawers()">'+icon('close',15)+'</button></div>'+
@@ -1223,13 +1366,13 @@ var jobSort = 'relevantes';
 function setSort(v){ jobSort='v'===v?v:v; jobSort=v; applyJobFilters(); }
 function sortJobs(list){
   var l = list.slice();
-  if(jobSort==='recientes') l.sort(function(a,b){return b.id.localeCompare(a.id);});
+  if(jobSort==='recientes') l.sort(function(a,b){return String(b.createdAt||'').localeCompare(String(a.createdAt||'')) || b.id.localeCompare(a.id);});
   else if(jobSort==='salario') l.sort(function(a,b){return b.salaryMax-a.salaryMax;});
   else if(jobSort==='match') l.sort(function(a,b){return b.match-a.match;});
   return l;
 }
 function applyJobFilters(){
-  var list = db.jobs.filter(jobMatchesFilters);
+  var list = activeJobs().filter(jobMatchesFilters);
   list = sortJobs(list);
   document.getElementById('jobResultsGrid').innerHTML = list.length ? list.map(function(j){return jobCardHTML(j);}).join('') :
     '<div class="empty-state glass">'+icon('search',34)+'<strong>No encontramos ofertas con esos filtros</strong>Prueba con otra palabra clave o quita algún filtro.</div>';
@@ -1288,6 +1431,8 @@ function viewJobsApp(){
 function viewJobDetail(id){
   var job = jobById(id);
   if(!job) return '<div class="wrap section"><div class="empty-state glass">Oferta no encontrada.</div></div>';
+  var isOwnerOrAdmin = !!(db.session && db.session.id===job.companyId) || !!db.isAdmin;
+  if(!jobIsActive(job) && !isOwnerOrAdmin) return '<div class="wrap section"><div class="empty-state glass">'+icon('briefcase',34)+'<strong>Esta oferta ya no está disponible</strong>La empresa la pausó o la cerró.<div style="margin-top:16px;"><a href="#/jobs" class="btn btn-primary">Ver otras ofertas</a></div></div></div>';
   var comp = companyOf(job);
   var cand = currentCandidate();
   var applied = cand ? db.applications.some(function(a){return a.jobId===job.id && a.candidateId===cand.id;}) : false;
@@ -1337,15 +1482,43 @@ function viewJobDetail(id){
 }
 function jdBox(k,v){ return '<div class="jd-info-box glass"><div class="k">'+esc(k)+'</div><div class="v">'+esc(v)+'</div></div>'; }
 function shareJob(id){
-  showToast('Enlace de la oferta copiado (demo): #/job/'+id);
+  var job = jobById(id);
+  var url = window.location.origin + window.location.pathname + '#/job/' + id;
+  var title = job ? (job.title + ' en ' + (companyOf(job)||{}).nombre + ' — Job-In') : 'Oferta en Job-In';
+  function fallbackCopy(){
+    try{
+      var ta = document.createElement('textarea');
+      ta.value = url; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if(ok){ showToast('Enlace copiado'); return; }
+    }catch(e){}
+    window.prompt('Copia este enlace:', url);
+  }
+  if(navigator.share){
+    navigator.share({ title:title, text:title, url:url }).catch(function(err){
+      if(err && err.name==='AbortError') return;
+      fallbackCopy();
+    });
+    return;
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){ showToast('Enlace copiado'); }).catch(fallbackCopy);
+  } else {
+    fallbackCopy();
+  }
 }
 function applyToJob(jobId){
   var cand = currentCandidate();
   if(!cand){ go('#/login'); showToast('Inicia sesión para postularte'); return; }
   var exists = db.applications.some(function(a){return a.jobId===jobId && a.candidateId===cand.id;});
   if(exists){ showToast('Ya te postulaste a esta vacante'); return; }
-  db.applications.unshift({ id:'app'+Date.now(), jobId:jobId, candidateId:cand.id, estado:'Enviada', fecha:'Hoy', etapa:'nuevas' });
-  db.notifications.unshift({id:'n'+Date.now(), text:'Tu postulación fue enviada correctamente.', fecha:'Hoy', leida:false});
+  var jobToApply = jobById(jobId);
+  if(!jobToApply || !jobIsActive(jobToApply)){ showToast('Esta oferta ya no está disponible.'); return; }
+  db.applications.unshift({ id:genId('app'), jobId:jobId, candidateId:cand.id, estado:'Enviada', fecha:fmtDate(new Date().toISOString()), etapa:'nuevas', fuente:lastJobSource });
+  notify(cand.id, 'Tu postulación a "'+jobToApply.title+'" fue enviada correctamente.');
+  notify(jobToApply.companyId, cand.nombre+' '+(cand.apellido||'')+' se postuló a "'+jobToApply.title+'".');
   saveDB();
   showToast('Postulación enviada correctamente');
   render();
@@ -1408,19 +1581,8 @@ function doLogin(){
   if(SUPABASE_READY){
     sb.auth.signInWithPassword({email:email, password:pass}).then(function(res){
       if(res.error){ authError = translateSupabaseError(res.error); render(); return; }
-      var uid = res.data.user.id;
-      var profile = authRole==='candidate'
-        ? db.candidates.find(function(c){return c.id===uid;})
-        : db.companies.find(function(c){return c.id===uid;});
-      if(!profile){
-        authError='Esa cuenta existe pero no como '+(authRole==='candidate'?'candidato':'empresa')+'. Prueba con el otro tipo de cuenta.';
-        render();
-        return;
-      }
-      db.session = {role:authRole, id:uid};
-      authError='';
-      showToast('Sesion iniciada');
-      go(authRole==='candidate' ? '#/dashboard' : '#/company');
+      authError=''; showToast('Iniciando sesión…');
+      /* el resto (perfil, rol, redirección) lo resuelve handleAuth al llegar SIGNED_IN */
     });
     return;
   }
@@ -1440,6 +1602,7 @@ function doLogin(){
   go(authRole==='candidate' ? '#/dashboard' : '#/company');
 }
 function viewRegister(){
+  registerShownAt = Date.now();
   var candFields = '<div class="grid2"><div class="field"><label>Nombre</label><input id="rc-nombre" placeholder="Tu nombre"></div><div class="field"><label>Apellido</label><input id="rc-apellido" placeholder="Tu apellido"></div></div>'+
     '<div class="field" style="margin-top:14px;"><label>Correo</label><input id="rc-email" type="email" placeholder="tucorreo@ejemplo.com"></div>'+
     '<div class="grid2" style="margin-top:14px;"><div class="field pw-field"><label>Contraseña</label><input id="rp1" type="password" placeholder="••••••••"><button class="pw-toggle" onclick="togglePw(\'rp1\',this)">Mostrar</button></div>'+
@@ -1456,6 +1619,7 @@ function viewRegister(){
     '<div class="role-switch"><button class="'+(authRole==='candidate'?'active':'')+'" onclick="authRole=\'candidate\';authError=\'\';render()">Soy candidato</button><button class="'+(authRole==='company'?'active':'')+'" onclick="authRole=\'company\';authError=\'\';render()">Soy empresa</button></div>'+
     googleButtonHTML()+
     (authRole==='candidate'?candFields:compFields)+
+    '<div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true"><label>No llenar este campo<input id="hp-website" tabindex="-1" autocomplete="off"></label></div>'+
     '<label class="checkline" style="margin-top:16px;align-items:flex-start;"><input type="checkbox" id="accept-terms" style="margin-top:3px;"><span>Acepto los <a href="#/terms" target="_blank" style="color:var(--accent);">Términos y condiciones</a> y la <a href="#/privacy" target="_blank" style="color:var(--accent);">Política de privacidad</a> de Job-In.</span></label>'+
     (authError?'<p style="color:var(--danger);font-size:0.83rem;margin-top:14px;">'+esc(authError)+'</p>':'')+
     '<button class="btn btn-primary btn-full" style="margin-top:20px;" onclick="doRegister()">Crear cuenta</button>'+
@@ -1479,9 +1643,13 @@ function submitNewPassword(){
   if(p1!==p2){ resetPassError='Las contraseñas no coinciden.'; render(); return; }
   sb.auth.updateUser({ password: p1 }).then(function(res){
     if(res.error){ resetPassError = translateSupabaseError(res.error); render(); return; }
-    resetPassError='';
-    showToast('Tu contraseña fue actualizada. Ya puedes usarla para iniciar sesión.');
-    go(db.session ? (db.session.role==='candidate' ? '#/dashboard' : '#/company') : '#/login');
+    resetPassError=''; recoveryMode=false;
+    showToast('Tu contraseña fue actualizada.');
+    sb.auth.getSession().then(function(s){
+      return handleAuthInner('INITIAL_SESSION', s && s.data && s.data.session);
+    }).then(function(){
+      go(db.session ? (db.session.role==='candidate' ? '#/dashboard' : '#/company') : '#/login');
+    });
   });
 }
 function viewTerms(){
@@ -1511,8 +1679,68 @@ function makeWelcomeThread(role, id, nombre){
   return { id:'t'+Date.now()+Math.floor(Math.random()*1000), companyId:id, candidateId:'jobin-support-cd',
     messages:[{from:'candidate', text:'¡Hola! Soy una cuenta de prueba para que revises la bandeja de mensajes de tu empresa en Job-In.', fecha:'Ahora'}] };
 }
+var registerShownAt = 0;
+var regDraft = null;
+var lastSignupEmail = '';
+var recoveryMode = false;
+
+function defaultPrefs(ciudad){ return { tipoEmpleo:'Tiempo completo', experiencia:'', salarioEsperado:'', sectores:[], horario:'', ciudad:ciudad||'', distancia:'', remoto:false, hibrido:false, presencial:true, notifJobs:true, notifMensajes:true, notifEmail:false, perfilPublico:true }; }
+function newCandidateProfile(id, nombre, apellido, email, ciudad, telefono){
+  return { id:id, nombre:nombre, apellido:apellido, email:email, ciudad:ciudad||'Sin especificar', telefono:telefono||'',
+    cargo:'Sin especificar', sobreMi:'Aún no has agregado una descripción de tu perfil.', perfilCompletado:25,
+    experiencia:[], educacion:[], habilidades:[], idiomas:[], certificaciones:[], portafolio:[], preferencias:defaultPrefs(ciudad) };
+}
+function newCompanyProfile(id, nombre, correo, telefono, ciudad, sector){
+  return { id:id, nombre:nombre, correo:correo, telefono:telefono||'', ciudad:ciudad||'Sin especificar', sector:sector||'Otro',
+    verificada:false, descripcion:'Esta empresa aún no ha completado su descripción.', empleados:'Por definir', fundacion:'Por definir', sitio:'' };
+}
+function makeWelcomeThread(role, id, nombre){
+  /* solo modo local; en Supabase lo crea un trigger de la base de datos */
+  if(role==='candidate'){
+    return { id:genId('t'), companyId:'jobin-support-co', candidateId:id,
+      messages:[{id:genId('m'), from:'company', text:'¡Hola '+(nombre||'')+'! Este es un chat de prueba para que revises cómo funciona tu bandeja de mensajes en Job-In. Escríbenos lo que quieras para probarlo.', fecha:'Ahora'}] };
+  }
+  return { id:genId('t'), companyId:id, candidateId:'jobin-support-cd',
+    messages:[{id:genId('m'), from:'candidate', text:'¡Hola! Soy una cuenta de prueba para que revises la bandeja de mensajes de tu empresa en Job-In.', fecha:'Ahora'}] };
+}
+function viewCheckEmail(){
+  return '<div class="glass auth-card" style="text-align:center;">'+
+    '<h2 style="margin-bottom:10px;">Revisa tu correo</h2>'+
+    '<p class="muted" style="font-size:0.9rem;line-height:1.7;">Te enviamos un enlace de confirmación a <strong style="color:var(--white);">'+esc(lastSignupEmail||'tu correo')+'</strong>. Ábrelo para activar tu cuenta y entrar a Job-In. Si no lo ves, revisa la carpeta de spam.</p>'+
+    '<button class="btn btn-ghost btn-full" style="margin-top:20px;" onclick="resendConfirmation()">Reenviar correo</button>'+
+    '<p class="muted" style="font-size:0.85rem;margin-top:16px;"><a href="#/login" style="color:var(--accent);font-weight:700;">Volver a iniciar sesión</a></p>'+
+  '</div>';
+}
+function resendConfirmation(){
+  if(!SUPABASE_READY || !lastSignupEmail){ showToast('No hay un correo pendiente de confirmar.'); return; }
+  sb.auth.resend({ type:'signup', email:lastSignupEmail, options:{ emailRedirectTo:getRedirectBase() } }).then(function(r){
+    showToast(r.error ? translateSupabaseError(r.error) : 'Te reenviamos el correo de confirmación.');
+  });
+}
+function signUpRemote(role, email, pass, profile){
+  try{ window.localStorage.setItem('jobin_last_signup', String(Date.now())); }catch(e){}
+  sb.auth.signUp({ email:email, password:pass, options:{ emailRedirectTo:getRedirectBase(), data:{ jobin_role:role, jobin_profile:profile } } }).then(function(res){
+    if(res.error || !res.data || !res.data.user){ authError = translateSupabaseError(res.error || {message:'No se pudo crear la cuenta.'}); render(); return; }
+    var u = res.data.user;
+    if(u.identities && u.identities.length===0){ authError='Ya existe una cuenta con ese correo. Intenta iniciar sesión.'; render(); return; }
+    authError=''; regDraft=null; lastSignupEmail=email;
+    if(res.data.session){ showToast('Creando tu cuenta…'); return; }   /* sin confirmación de correo: handleAuth crea el perfil */
+    go('#/check-email');
+  });
+}
 function doRegister(){
-  if(!byId('accept-terms').checked){ authError='Debes aceptar los Términos y condiciones y la Política de privacidad para continuar.'; render(); return; }
+  /* guardamos lo escrito para no perderlo si hay un error de validación */
+  regDraft = {};
+  ['rc-nombre','rc-apellido','rc-email','rc-ciudad','rc-telefono','re-nombre','re-email','re-telefono','re-ciudad','re-sector'].forEach(function(id){ var el=byId(id); if(el) regDraft[id]=el.value; });
+  var acc = byId('accept-terms'); if(acc) regDraft['accept-terms'] = acc.checked;
+  if(!acc || !acc.checked){ authError='Debes aceptar los Términos y condiciones y la Política de privacidad para continuar.'; render(); return; }
+  var hp = byId('hp-website'); if(hp && hp.value){ showToast('Cuenta creada.'); return; }   /* trampa para bots */
+  if(Date.now() - registerShownAt < 2500){ authError='Espera un momento y vuelve a intentarlo.'; render(); return; }
+  if(SUPABASE_READY){
+    var lastSig = 0; try{ lastSig = Number(window.localStorage.getItem('jobin_last_signup')||0); }catch(e){}
+    if(Date.now() - lastSig < 60000){ authError='Espera un minuto antes de crear otra cuenta desde este navegador.'; render(); return; }
+  }
+
   if(authRole==='candidate'){
     var nombre=byId('rc-nombre').value.trim(), apellido=byId('rc-apellido').value.trim();
     var email=byId('rc-email').value.trim().toLowerCase();
@@ -1521,32 +1749,11 @@ function doRegister(){
     if(!nombre || !apellido){ authError='Ingresa tu nombre y apellido.'; render(); return; }
     if(containsBadWords(nombre) || containsBadWords(apellido) || containsBadWords(ciudad)){ authError='Revisa tus datos: contienen lenguaje que no está permitido en Job-In.'; render(); return; }
     if(!email){ authError='Ingresa un correo electrónico.'; render(); return; }
-    if(!SUPABASE_READY && db.candidates.some(function(c){return (c.email||'').toLowerCase()===email;})){ authError='Ya existe una cuenta de candidato con ese correo. Intenta iniciar sesión.'; render(); return; }
     if(!p1 || p1.length<6){ authError='La contraseña debe tener al menos 6 caracteres.'; render(); return; }
     if(p1!==p2){ authError='Las contraseñas no coinciden.'; render(); return; }
-
-    var candData = function(id){ return {
-      id:id, nombre:nombre, apellido:apellido, email:email, ciudad:ciudad||'Sin especificar', telefono:telefono,
-      cargo:'Sin especificar', sobreMi:'Aún no has agregado una descripción de tu perfil.', perfilCompletado:25,
-      experiencia:[], educacion:[], habilidades:[], idiomas:[], certificaciones:[], portafolio:[],
-      preferencias:{ tipoEmpleo:'Tiempo completo', experiencia:'', salarioEsperado:'', sectores:[], horario:'', ciudad:ciudad||'', distancia:'', remoto:false, hibrido:false, presencial:true, notifJobs:true, notifMensajes:true, notifEmail:false, perfilPublico:true }
-    }; };
-
-    if(SUPABASE_READY){
-      sb.auth.signUp({email:email, password:p1}).then(function(res){
-        if(res.error || !res.data.user){ authError = translateSupabaseError(res.error || {message:'No se pudo crear la cuenta.'}); render(); return; }
-        var newCand = candData(res.data.user.id);
-        db.candidates.push(newCand);
-        db.threads.push(makeWelcomeThread('candidate', newCand.id, nombre));
-        db.session = {role:'candidate', id:newCand.id};
-        authError='';
-        saveDB();
-        showToast('Cuenta creada. Bienvenido a Job-In!');
-        go('#/dashboard');
-      });
-      return;
-    }
-    var newCand = candData('cand'+Date.now());
+    if(SUPABASE_READY){ signUpRemote('candidate', email, p1, newCandidateProfile('pending', nombre, apellido, email, ciudad, telefono)); return; }
+    if(db.candidates.some(function(c){return (c.email||'').toLowerCase()===email;})){ authError='Ya existe una cuenta de candidato con ese correo. Intenta iniciar sesión.'; render(); return; }
+    var newCand = newCandidateProfile(genId('cand'), nombre, apellido, email, ciudad, telefono);
     newCand.password = p1;
     db.candidates.push(newCand);
     db.threads.push(makeWelcomeThread('candidate', newCand.id, nombre));
@@ -1559,45 +1766,91 @@ function doRegister(){
     if(!cnombre){ authError='Ingresa el nombre de tu empresa.'; render(); return; }
     if(containsBadWords(cnombre) || containsBadWords(cciudad)){ authError='Revisa los datos de tu empresa: contienen lenguaje que no está permitido en Job-In.'; render(); return; }
     if(!cemail){ authError='Ingresa un correo empresarial.'; render(); return; }
-    if(!SUPABASE_READY && db.companies.some(function(c){return (c.correo||'').toLowerCase()===cemail;})){ authError='Ya existe una cuenta de empresa con ese correo. Intenta iniciar sesión.'; render(); return; }
     if(!p3 || p3.length<6){ authError='La contraseña debe tener al menos 6 caracteres.'; render(); return; }
-
-    var compData = function(id){ return {
-      id:id, nombre:cnombre, correo:cemail, telefono:ctelefono, ciudad:cciudad||'Sin especificar', sector:sector,
-      verificada:false, descripcion:'Esta empresa aún no ha completado su descripción.', empleados:'Por definir', fundacion:'Por definir', sitio:''
-    }; };
-
-    if(SUPABASE_READY){
-      sb.auth.signUp({email:cemail, password:p3}).then(function(res){
-        if(res.error || !res.data.user){ authError = translateSupabaseError(res.error || {message:'No se pudo crear la cuenta.'}); render(); return; }
-        var newComp = compData(res.data.user.id);
-        db.companies.push(newComp);
-        db.threads.push(makeWelcomeThread('company', newComp.id, cnombre));
-        db.session = {role:'company', id:newComp.id};
-        authError='';
-        saveDB();
-        showToast('Cuenta creada. Bienvenido a Job-In!');
-        go('#/company');
-      });
-      return;
-    }
-    var newComp = compData('comp'+Date.now());
+    if(SUPABASE_READY){ signUpRemote('company', cemail, p3, newCompanyProfile('pending', cnombre, cemail, ctelefono, cciudad, sector)); return; }
+    if(db.companies.some(function(c){return (c.correo||'').toLowerCase()===cemail;})){ authError='Ya existe una cuenta de empresa con ese correo. Intenta iniciar sesión.'; render(); return; }
+    var newComp = newCompanyProfile(genId('comp'), cnombre, cemail, ctelefono, cciudad, sector);
     newComp.password = p3;
     db.companies.push(newComp);
     db.threads.push(makeWelcomeThread('company', newComp.id, cnombre));
     db.session = {role:'company', id:newComp.id};
   }
-  authError='';
+  authError=''; regDraft=null;
   saveDB();
-  showToast('Cuenta creada. ¡Bienvenido a Job-In!');
+  showToast('Cuenta creada. Bienvenido a Job-In!');
   go(authRole==='candidate' ? '#/dashboard' : '#/company');
+}
+
+/* ---------- Manejo de sesión de Supabase (login, registro, Google, confirmación de correo) ---------- */
+async function handleAuth(event, session){
+  try{ await handleAuthInner(event, session); }
+  catch(err){ console.error('Error de sesión:', err); render(); }
+}
+async function handleAuthInner(event, session){
+  var uid = session && session.user && session.user.id;
+  if(event==='PASSWORD_RECOVERY'){ go('#/reset-password'); render(); return; }
+  if(!uid){
+    var wasLogged = !!db.session;
+    db.session = null; db.isAdmin = false;
+    if(loadedForUid){ loadedForUid = null; try{ await refreshData(); }catch(e){} }
+    render();
+    return;
+  }
+  if(event==='TOKEN_REFRESHED') return;
+  if(db.session && db.session.id===uid && event!=='USER_UPDATED' && event!=='INITIAL_SESSION') return;   /* SIGNED_IN repetido al volver a la pestaña */
+  if(loadedForUid !== uid){ try{ await refreshData(); }catch(e){} loadedForUid = uid; }
+
+  var cand = db.candidates.find(function(c){return c.id===uid;});
+  var comp = db.companies.find(function(c){return c.id===uid;});
+  var created = false;
+  if(!cand && !comp){
+    var meta = session.user.user_metadata || {};
+    var role = meta.jobin_role || null;
+    if(!role){ try{ role = window.localStorage.getItem('jobin_pending_role'); }catch(e){} }
+    role = role==='company' ? 'company' : 'candidate';
+    var email = session.user.email || '';
+    var fullName = meta.full_name || meta.name || '';
+    if(role==='company'){
+      comp = meta.jobin_profile ? Object.assign({}, meta.jobin_profile, {id:uid})
+        : newCompanyProfile(uid, fullName || (email.split('@')[0] || 'Mi empresa'), email, '', '', 'Otro');
+      db.companies.push(comp);
+    } else {
+      var parts = fullName.split(' ').filter(Boolean);
+      cand = meta.jobin_profile ? Object.assign({}, meta.jobin_profile, {id:uid})
+        : newCandidateProfile(uid, parts[0] || (email.split('@')[0] || 'Usuario'), parts.slice(1).join(' '), email, '', '');
+      db.candidates.push(cand);
+    }
+    try{ window.localStorage.removeItem('jobin_pending_role'); }catch(e){}
+    created = true;
+  }
+  db.session = { role: comp ? 'company' : 'candidate', id: uid };
+  await checkAdminFlag(uid);
+  if(created){
+    await syncNow();                 /* guarda el perfil; un trigger crea el chat de bienvenida */
+    try{ await refreshData(); }catch(e){}
+    db.session = { role: comp ? 'company' : 'candidate', id: uid };
+    showToast('Cuenta creada. ¡Bienvenido a Job-In!');
+  }
+  var seg = currentRoute()[0] || '';
+  if(!recoveryMode && (created || event==='SIGNED_IN') && ['login','register','check-email',''].indexOf(seg)!==-1){
+    go(comp ? '#/company' : '#/dashboard');
+  }
+  render();
+}
+function viewRemoteError(){
+  return '<div class="auth-wrap"><div class="glass auth-card" style="text-align:center;">'+
+    '<h2 style="margin-bottom:10px;">No pudimos cargar los datos</h2>'+
+    '<p class="muted" style="font-size:0.88rem;line-height:1.7;">La base de datos no respondió como esperábamos. Si acabas de actualizar la página, comprueba que ya ejecutaste el archivo <strong style="color:var(--white);">supabase-setup.sql</strong> en el SQL Editor de Supabase.</p>'+
+    '<p class="muted" style="font-size:0.78rem;margin-top:12px;word-break:break-word;">Detalle: '+esc(remoteError)+'</p>'+
+    '<button class="btn btn-primary btn-full" style="margin-top:20px;" onclick="location.reload()">Reintentar</button>'+
+  '</div></div>';
 }
 
 /* ================= CANDIDATE: DASHBOARD ================= */
 function viewDashboard(){
   var cand = currentCandidate();
   var myApps = db.applications.filter(function(a){return a.candidateId===cand.id;});
-  var recommended = db.jobs.slice().sort(function(a,b){return b.match-a.match;}).slice(0,3);
+  var recommended = activeJobs().sort(function(a,b){return b.match-a.match;}).slice(0,3);
   var activity = [
     {t:'Postulación enviada a Diseñador UX/UI', when:'Hace 1 día'},
     {t:'NovaTech vio tu perfil', when:'Hace 1 día'},
@@ -1636,9 +1889,9 @@ function viewDashboard(){
 /* ================= RECOMMENDATIONS ================= */
 var recoTab = 'match';
 function viewRecommendations(){
-  var list = db.jobs.slice();
+  var list = activeJobs();
   if(recoTab==='match') list.sort(function(a,b){return b.match-a.match;});
-  else if(recoTab==='recientes') list.sort(function(a,b){return b.id.localeCompare(a.id);});
+  else if(recoTab==='recientes') list.sort(function(a,b){return String(b.createdAt||'').localeCompare(String(a.createdAt||'')) || b.id.localeCompare(a.id);});
   else if(recoTab==='salario') list.sort(function(a,b){return b.salaryMax-a.salaryMax;});
   else if(recoTab==='cerca'){ var cand=currentCandidate(); list = list.filter(function(j){return j.ubicacion===cand.ciudad;}).concat(list.filter(function(j){return j.ubicacion!==cand.ciudad;})); }
   return '<div class="section-head"><h2>Recomendaciones personalizadas</h2></div>'+
@@ -1887,9 +2140,11 @@ function renderChat(thread, role){
 }
 /* ---------------- filtro básico de lenguaje ofensivo para el chat ---------------- */
 var BAD_WORDS = ['idiota','estupido','estúpido','imbecil','imbécil','pendejo','marica','maricón','maricon','gilipollas','puta','puto','mierda','cabron','cabrón','hijueputa','malparido','malparida','gonorrea','huevon','huevón','zorra','perra','verga','pinche','desgraciado','desgraciada'];
+var BAD_RE = null;
 function containsBadWords(text){
-  var t = norm(text);
-  return BAD_WORDS.some(function(w){ return t.indexOf(norm(w)) !== -1; });
+  /* compara palabras completas (con plural), así no bloquea apellidos como Vergara ni palabras como computadora */
+  if(!BAD_RE){ BAD_RE = new RegExp('(^|[^a-z0-9])(' + BAD_WORDS.map(norm).join('|') + ')(es|s)?([^a-z0-9]|$)'); }
+  return BAD_RE.test(norm(text));
 }
 function sendMessage(threadId){
   var input = document.getElementById('chatInput');
@@ -1898,24 +2153,32 @@ function sendMessage(threadId){
     showToast('Tu mensaje contiene lenguaje que no está permitido en Job-In.');
     return;
   }
+  if(text.length > 1000){ showToast('El mensaje es muy largo (máximo 1000 caracteres).'); return; }
+  var nowTs = Date.now();
+  if(nowTs - lastSendAt < 1500){ showToast('Espera un momento antes de enviar otro mensaje.'); return; }
+  lastSendAt = nowTs;
   var thread = db.threads.find(function(t){return t.id===threadId;});
   var role = db.session.role;
-  thread.messages.push({from:role, text:text, fecha:'Ahora'});
+  thread.messages.push({id:genId('m'), from:role, text:text, fecha:'Ahora'});
+  var otherId = role==='candidate' ? thread.companyId : thread.candidateId;
+  var meName = role==='candidate' ? ((currentCandidate()||{}).nombre||'Un candidato') : ((currentCompany()||{}).nombre||'Una empresa');
+  notify(otherId, 'Nuevo mensaje de '+meName+'.');
   saveDB();
   input.value='';
   render();
 }
+var lastSendAt = 0;
 
 /* ================= NOTIFICATIONS ================= */
 function viewNotifications(){
   var icons = ['user','target','arrowRight','message','star'];
-  var html = db.notifications.map(function(n,i){
+  var html = myNotifications().map(function(n,i){
     return '<div class="notif-item glass '+(n.leida?'':'unread')+'"><div class="notif-icon">'+icon(icons[i%icons.length],17)+'</div><div style="flex:1;"><div class="notif-text">'+esc(n.text)+'</div><div class="notif-time">'+esc(n.fecha)+'</div></div>'+(!n.leida?'<button class="btn btn-ghost btn-sm" onclick="markRead(\''+n.id+'\')">Marcar leída</button>':'')+'</div>';
   }).join('');
   return '<div class="section-head"><h2>Notificaciones</h2><button class="btn btn-ghost btn-sm" onclick="markAllRead()">Marcar todas como leídas</button></div>'+(html||('<div class="empty-state glass">'+icon('bell',30)+'<strong>Sin notificaciones</strong></div>'));
 }
-function markRead(id){ var n=db.notifications.find(function(x){return x.id===id;}); if(n){n.leida=true; saveDB(); render();} }
-function markAllRead(){ db.notifications.forEach(function(n){n.leida=true;}); saveDB(); render(); showToast('Notificaciones marcadas como leídas'); }
+function markRead(id){ var n=myNotifications().find(function(x){return x.id===id;}); if(n){n.leida=true; saveDB(); render();} }
+function markAllRead(){ myNotifications().forEach(function(n){n.leida=true;}); saveDB(); render(); showToast('Notificaciones marcadas como leídas'); }
 
 /* ================= SETTINGS (shared) ================= */
 function viewSettings(){
@@ -1954,7 +2217,32 @@ function viewCompanyHome(){
 }
 
 /* ================= COMPANY: POST JOB ================= */
-function viewPostJob(){
+var editingJobId = null;
+function viewPostJob(jobId){
+  var html = viewPostJobForm();
+  var job = jobId ? jobById(jobId) : null;
+  var comp = currentCompany();
+  if(job && comp && job.companyId===comp.id){
+    editingJobId = job.id;
+    setTimeout(function(){ prefillJobForm(job); }, 0);
+    return html.replace('Publica una vacante','Editar vacante').replace('Publicar oferta</button>','Guardar cambios</button>');
+  }
+  editingJobId = null;
+  return html;
+}
+function prefillJobForm(j){
+  function set(id,v){ var el=byId(id); if(el && v!==undefined && v!==null) el.value = v; }
+  set('pj2-title', j.title); set('pj2-area', j.area); set('pj2-vac', j.vacantes); set('pj2-desc', j.descripcion);
+  set('pj2-func', (j.funciones||[]).join('\n')); set('pj2-req', (j.requisitos||[]).join('\n'));
+  set('pj2-edu', j.nivelEducativo); set('pj2-exp', j.experiencia); set('pj2-skills', (j.habilidades||[]).join(', '));
+  set('pj2-lang', (j.idiomas||[]).join(', ')); set('pj2-remun', j.tipoRemuneracion);
+  set('pj2-smin', j.salaryMin); set('pj2-smax', j.salaryMax); set('pj2-contract', j.tipoContrato); set('pj2-jornada', j.jornada);
+  set('pj2-horario', j.horario); set('pj2-mod', j.modalidad); set('pj2-loc', j.ubicacion); set('pj2-benef', (j.beneficios||[]).join('\n'));
+  var re=/^\d{4}-\d{2}-\d{2}$/;
+  if(re.test(j.fechaPublicacion||'')) set('pj2-fpub', j.fechaPublicacion);
+  if(re.test(j.fechaLimite||'')) set('pj2-flim', j.fechaLimite);
+}
+function viewPostJobForm(){
   return '<div class="section-head"><h2>Publica una vacante</h2></div>'+
   '<form class="glass" style="padding:26px;max-width:760px;" onsubmit="submitCompanyJob(event)">'+
     '<div class="field"><label>Título del cargo</label><input id="pj2-title" required placeholder="Ej. Analista de datos"></div>'+
@@ -1985,7 +2273,7 @@ function submitCompanyJob(e){
     return;
   }
   var job = {
-    id:'job'+Date.now(), title:byId('pj2-title').value, companyId:comp.id, area:byId('pj2-area').value, vacantes:Number(byId('pj2-vac').value)||1,
+    id:genId('job'), estado:'activa', title:byId('pj2-title').value, companyId:comp.id, area:byId('pj2-area').value, vacantes:Number(byId('pj2-vac').value)||1,
     modalidad:byId('pj2-mod').value, ubicacion:byId('pj2-loc').value, tipoContrato:byId('pj2-contract').value, jornada:byId('pj2-jornada').value, horario:byId('pj2-horario').value||'A convenir',
     salaryMin:Number(byId('pj2-smin').value)||0, salaryMax:Number(byId('pj2-smax').value)||0, tipoRemuneracion:byId('pj2-remun').value,
     experiencia:byId('pj2-exp').value, nivelEducativo:byId('pj2-edu').value, habilidades:splitCommas(byId('pj2-skills').value),
@@ -1994,6 +2282,18 @@ function submitCompanyJob(e){
     beneficios:splitLines(byId('pj2-benef').value), fechaPublicacion:byId('pj2-fpub').value||'Hoy', fechaLimite:byId('pj2-flim').value||'Por definir',
     matchReasons:['Tus habilidades coinciden con los requisitos','Tu ubicación coincide con la oferta']
   };
+  var existing = editingJobId ? jobById(editingJobId) : null;
+  if(existing && existing.companyId===comp.id){
+    var keep = { id:existing.id, estado:existing.estado||'activa', companyId:existing.companyId, match:existing.match, createdAt:existing.createdAt };
+    Object.keys(job).forEach(function(k){ existing[k] = job[k]; });
+    Object.keys(keep).forEach(function(k){ if(keep[k]!==undefined) existing[k] = keep[k]; });
+    editingJobId = null;
+    saveDB();
+    showToast('Cambios guardados');
+    go('#/my-jobs');
+    return;
+  }
+  job.createdAt = new Date().toISOString();
   db.jobs.unshift(job);
   saveDB();
   showToast('Vacante publicada correctamente');
@@ -2010,9 +2310,31 @@ function viewMyJobs(){
     '<div class="job-grid">'+myJobs.map(function(j){
       var apps = db.applications.filter(function(a){return a.jobId===j.id;}).length;
       return '<div class="job-card glass"><div class="job-card-top">'+companyLogoHTML(comp)+'<div style="flex:1;"><div class="role">'+esc(j.title)+'</div><div class="company-line">'+esc(j.ubicacion)+' · '+esc(j.modalidad)+'</div></div><span class="pill">'+apps+' postulaciones</span></div>'+
+      '<div style="margin-top:10px;">'+jobStatusBadge(j)+'</div>'+
       '<div class="job-salary" style="margin-top:12px;">'+money(j.salaryMin)+' – '+money(j.salaryMax)+' COP</div>'+
-      '<div class="job-card-actions"><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+j.id+'\')">Ver oferta</button><button class="btn btn-ghost btn-sm" onclick="go(\'#/candidates\')">Ver candidatos</button><button class="btn btn-danger btn-sm" onclick="removeJob(\''+j.id+'\')">'+icon('trash',13)+'</button></div></div>';
+      '<div class="job-card-actions"><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+j.id+'\')">Ver oferta</button><button class="btn btn-ghost btn-sm" onclick="go(\'#/candidates\')">Ver candidatos</button><button class="btn btn-ghost btn-sm" onclick="go(\'#/post-job/'+j.id+'\')">'+icon('edit',13)+' Editar</button>'+jobStatusButtons(j)+'<button class="btn btn-danger btn-sm" onclick="removeJob(\''+j.id+'\')" title="Eliminar">'+icon('trash',13)+'</button></div></div>';
     }).join('')+'</div>';
+}
+function jobStatusBadge(j){
+  var e = j.estado || 'activa';
+  var map = { activa:['Activa','rgba(92,206,124,0.15)','#5CCE7C'], pausada:['Pausada','rgba(255,200,87,0.15)','var(--warn)'], cerrada:['Cerrada','rgba(169,178,184,0.15)','var(--gray)'] };
+  var m = map[e] || map.activa;
+  return '<span class="status-badge" style="background:'+m[1]+';color:'+m[2]+';">'+m[0]+'</span>';
+}
+function jobStatusButtons(j){
+  var e = j.estado || 'activa', out = '';
+  if(e==='activa') out += '<button class="btn btn-ghost btn-sm" onclick="setJobStatus(\''+j.id+'\',\'pausada\')">Pausar</button>';
+  if(e!=='activa') out += '<button class="btn btn-ghost btn-sm" onclick="setJobStatus(\''+j.id+'\',\'activa\')">Reactivar</button>';
+  if(e!=='cerrada') out += '<button class="btn btn-ghost btn-sm" onclick="setJobStatus(\''+j.id+'\',\'cerrada\')">Cerrar</button>';
+  return out;
+}
+function setJobStatus(id, estado){
+  var j = jobById(id); var comp = currentCompany();
+  if(!j || !comp || j.companyId!==comp.id) return;
+  if(estado==='cerrada' && !confirm('¿Cerrar esta oferta? Dejará de aparecer en las búsquedas.')) return;
+  j.estado = estado;
+  saveDB(); render();
+  showToast(estado==='activa' ? 'Oferta reactivada' : (estado==='pausada' ? 'Oferta pausada' : 'Oferta cerrada'));
 }
 function removeJob(id){
   db.jobs = db.jobs.filter(function(j){return j.id!==id;});
@@ -2080,6 +2402,9 @@ function moveStage(appId, dir){
   a.etapa = pipelineStages[newIdx][0];
   var statusMap = {nuevas:'Enviada',revision:'En revisión',preseleccion:'Preseleccionado',entrevista:'Entrevista',oferta:'Seleccionado',contratado:'Contratado'};
   a.estado = statusMap[a.etapa];
+  if(a.etapa==='contratado' && !a.contratadoAt) a.contratadoAt = new Date().toISOString();
+  var jobMoved = jobById(a.jobId);
+  notify(a.candidateId, 'Tu postulación a "'+(jobMoved?jobMoved.title:'una oferta')+'" cambió a: '+statusMap[a.etapa]+'.');
   saveDB(); render(); showToast('Candidato movido a "'+pipelineStages[newIdx][1]+'"');
 }
 
@@ -2171,41 +2496,29 @@ function viewCompanyStats(){
 }
 
 /* ================= ADMIN ================= */
-/* ---------------- ADMIN PASSWORD GATE ---------------- */
-var ADMIN_PASSWORD = 'soloredesenestavaina'; /* cámbiala por la que quieras, solo tú la conoces */
-var adminError = '';
-function isAdminUnlocked(){
-  try{ return window.sessionStorage.getItem('jobin_admin_unlocked')==='1'; }catch(e){ return false; }
-}
-function checkAdminPass(){
-  var v = byId('admin-pass').value || '';
-  if(v === ADMIN_PASSWORD){
-    try{ window.sessionStorage.setItem('jobin_admin_unlocked','1'); }catch(e){}
-    adminError='';
-    render();
-  } else {
-    adminError='Contraseña incorrecta.';
-    render();
-  }
-}
-function adminLogout(){
-  try{ window.sessionStorage.removeItem('jobin_admin_unlocked'); }catch(e){}
-  go('#/');
-}
+/* ---------------- ADMIN: acceso real (tabla `admins` en Supabase, sin contraseña en el código) ---------------- */
 function viewAdminGate(){
-  return '<div class="glass auth-card">'+
-    '<h2 style="text-align:center;margin-bottom:6px;">Panel administrativo</h2>'+
-    '<p class="muted" style="text-align:center;font-size:0.85rem;margin-bottom:20px;">Acceso restringido.</p>'+
-    '<div class="field pw-field"><label>Contraseña</label><input id="admin-pass" type="password" placeholder="••••••••" onkeydown="if(event.key===\'Enter\')checkAdminPass()"><button class="pw-toggle" onclick="togglePw(\'admin-pass\',this)">Mostrar</button></div>'+
-    (adminError?'<p style="color:var(--danger);font-size:0.83rem;margin-top:12px;">'+esc(adminError)+'</p>':'')+
-    '<button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="checkAdminPass()">Entrar</button>'+
+  var msg, action = '';
+  if(!SUPABASE_READY){
+    msg = 'El panel administrativo solo está disponible cuando la plataforma está conectada a Supabase.';
+  } else if(!db.session){
+    msg = 'Inicia sesión con tu cuenta de administrador para continuar.';
+    action = '<button class="btn btn-primary btn-full" style="margin-top:16px;" onclick="go(\'#/login\')">Iniciar sesión</button>';
+  } else {
+    msg = 'Tu cuenta no tiene permisos de administrador.';
+    action = '<a href="#/" class="btn btn-ghost btn-full" style="margin-top:16px;justify-content:center;">Volver al inicio</a>';
+  }
+  return '<div class="glass auth-card" style="text-align:center;">'+
+    '<h2 style="margin-bottom:8px;">Panel administrativo</h2>'+
+    '<p class="muted" style="font-size:0.9rem;">'+esc(msg)+'</p>'+action+
   '</div>';
 }
+function adminLogout(){ go('#/'); }
 function viewAdmin(){
   var realCandidates = db.candidates.filter(function(c){return !c.sistema;});
   var realCompanies = db.companies.filter(function(c){return !c.sistema;});
   var totalUsers = realCandidates.length, totalComp = realCompanies.length, totalJobs = db.jobs.length;
-  return '<div class="section-head"><h2>Panel administrativo — Job-In</h2><button class="btn btn-ghost btn-sm" onclick="adminLogout()">'+icon('logout',14)+' Bloquear panel</button></div>'+
+  return '<div class="section-head"><h2>Panel administrativo — Job-In</h2><button class="btn btn-ghost btn-sm" onclick="adminLogout()">'+icon('logout',14)+' Salir del panel</button></div>'+
   '<div class="grid4">'+
     '<div class="kpi-card glass"><div class="num">'+totalUsers+'</div><div class="lbl">Usuarios candidatos</div></div>'+
     '<div class="kpi-card glass"><div class="num">'+totalComp+'</div><div class="lbl">Empresas registradas</div></div>'+
@@ -2233,55 +2546,11 @@ populateCityDatalist();
 loadDB(function(){
   if(SUPABASE_READY){
     sb.auth.onAuthStateChange(function(event, session){
-      var uid = session && session.user && session.user.id;
-      if(event==='PASSWORD_RECOVERY'){ go('#/reset-password'); render(); return; }
-      if(uid){
-        var cand = db.candidates.find(function(c){return c.id===uid;});
-        var comp = db.companies.find(function(c){return c.id===uid;});
-        if(cand){
-          db.session = {role:'candidate', id:uid};
-          if(event==='SIGNED_IN' && (currentRoute()[0]==='login' || currentRoute()[0]==='register' || !currentRoute()[0])) go('#/dashboard');
-          render();
-        }
-        else if(comp){
-          db.session = {role:'company', id:uid};
-          if(event==='SIGNED_IN' && (currentRoute()[0]==='login' || currentRoute()[0]==='register' || !currentRoute()[0])) go('#/company');
-          render();
-        }
-        else {
-          /* primer inicio de sesión con Google (u otro proveedor): crear el perfil de Job-In automáticamente */
-          var pendingRole = 'candidate';
-          try{ pendingRole = window.localStorage.getItem('jobin_pending_role') || 'candidate'; }catch(e){}
-          var email = session.user.email || '';
-          var fullName = (session.user.user_metadata && (session.user.user_metadata.full_name || session.user.user_metadata.name)) || '';
-          var parts = fullName.split(' ').filter(Boolean);
-          var nombre = parts[0] || (email.split('@')[0] || 'Usuario');
-          var apellido = parts.slice(1).join(' ');
-          if(pendingRole==='company'){
-            var newComp = { id:uid, nombre: fullName || nombre, correo:email, telefono:'', ciudad:'Sin especificar', sector:'Otro',
-              verificada:false, descripcion:'Esta empresa aún no ha completado su descripción.', empleados:'Por definir', fundacion:'Por definir', sitio:'' };
-            db.companies.push(newComp);
-            db.threads.push(makeWelcomeThread('company', newComp.id, newComp.nombre));
-            db.session = {role:'company', id:uid};
-          } else {
-            var newCand = { id:uid, nombre:nombre, apellido:apellido, email:email, ciudad:'Sin especificar', telefono:'',
-              cargo:'Sin especificar', sobreMi:'Aún no has agregado una descripción de tu perfil.', perfilCompletado:25,
-              experiencia:[], educacion:[], habilidades:[], idiomas:[], certificaciones:[], portafolio:[],
-              preferencias:{ tipoEmpleo:'Tiempo completo', experiencia:'', salarioEsperado:'', sectores:[], horario:'', ciudad:'', distancia:'', remoto:false, hibrido:false, presencial:true, notifJobs:true, notifMensajes:true, notifEmail:false, perfilPublico:true } };
-            db.candidates.push(newCand);
-            db.threads.push(makeWelcomeThread('candidate', newCand.id, nombre));
-            db.session = {role:'candidate', id:uid};
-          }
-          try{ window.localStorage.removeItem('jobin_pending_role'); }catch(e){}
-          saveDB();
-          showToast('Cuenta creada con Google. ¡Bienvenido a Job-In!');
-          go(pendingRole==='company' ? '#/company' : '#/dashboard');
-        }
-      } else {
-        db.session = null;
-        render();
-      }
+      /* importante: no llamar a Supabase dentro del callback; se difiere con setTimeout para evitar bloqueos */
+      if(event==='PASSWORD_RECOVERY') recoveryMode = true;
+      setTimeout(function(){ handleAuth(event, session); }, 0);
     });
+    startPolling();
   } else {
     render();
   }
