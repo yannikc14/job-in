@@ -416,6 +416,7 @@ footer.pub-footer{ border-top:1px solid var(--border); padding:44px 0 28px; marg
 </style>
 <!-- Supabase JS SDK — used only if you fill in SUPABASE_CONFIG below in the script -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
 </head>
 <body>
 
@@ -850,6 +851,118 @@ function myNotifications(){
 function statusClass(s){ return 'status-'+String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,'-').toLowerCase(); }
 function esc(s){ if(s===undefined||s===null) return ''; return String(s).replace(/[&<>"']/g, function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
 function norm(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toLowerCase(); }
+/* ---------------- Job-In Match real (se calcula con tu perfil) ---------------- */
+var EDU_LEVELS = {bachiller:0, tecnico:1, tecnologo:2, profesional:3, especializacion:4, maestria:5};
+function requiredYears(s){
+  s = norm(s);
+  if(!s || s.indexOf('sin exp')===0) return 0;
+  var m = s.match(/(\d+)/); if(!m) return 0;
+  var n = Number(m[1]);
+  return s.indexOf('mes')!==-1 ? n/12 : n;
+}
+function candYears(c){
+  var list = c.experiencia || [];
+  if(!list.length) return c.experienciaAnios ? requiredYears(c.experienciaAnios) : 0;
+  var now = new Date().getFullYear(), total = 0;
+  list.forEach(function(e){
+    var m = String(e.periodo||'').match(/(\d{4})\D*(\d{4}|presente|actualidad|actual)/i);
+    if(!m){ total += 0.5; return; }
+    var end = /\d{4}/.test(m[2]) ? Number(m[2]) : now;
+    total += Math.max(0.25, end - Number(m[1]));
+  });
+  return total;
+}
+function candEduLevel(c){
+  var list = c.educacion || [];
+  if(!list.length){ return c.educacionNivel ? (EDU_LEVELS[norm(c.educacionNivel)]===undefined ? null : EDU_LEVELS[norm(c.educacionNivel)]) : null; }
+  var best = null;
+  list.forEach(function(e){
+    var t = norm((e.titulo||'')+' '+(e.nivel||'')), lv = null;
+    if(t.indexOf('maestr')!==-1) lv = 5;
+    else if(t.indexOf('especializ')!==-1) lv = 4;
+    else if(/profesional|ingenier|licenciat|pregrado|universitari/.test(t)) lv = 3;
+    else if(t.indexOf('tecnolog')!==-1) lv = 2;
+    else if(t.indexOf('tecnic')!==-1) lv = 1;
+    else if(t.indexOf('bachiller')!==-1) lv = 0;
+    if(lv!==null && (best===null || lv>best)) best = lv;
+  });
+  return best;
+}
+function parseMoneyRange(s){
+  if(!s) return null;
+  var nums = (String(s).match(/\d[\d.,]*/g)||[]).map(function(x){ return Number(x.replace(/[.,]/g,'')); }).filter(function(n){ return n>=100000; });
+  if(!nums.length) return null;
+  return [Math.min.apply(null,nums), Math.max.apply(null,nums)];
+}
+function matchFor(job, c){
+  c = c || {};
+  var prefs = c.preferencias || {};
+  var res = {score:0, reasons:[], gaps:[]}, pts = 0;
+  var jobSk = job.habilidades || [], candSk = (c.habilidades||[]).map(norm);
+  if(jobSk.length){
+    var matched = jobSk.filter(function(s){ return candSk.indexOf(norm(s))!==-1; });
+    var missing = jobSk.filter(function(s){ return candSk.indexOf(norm(s))===-1; });
+    pts += 45*matched.length/jobSk.length;
+    if(matched.length) res.reasons.push('Dominas '+matched.join(', ')+' ('+matched.length+' de '+jobSk.length+' habilidades pedidas)');
+    if(missing.length) res.gaps.push('Habilidades que te faltan: '+missing.join(', '));
+  } else pts += 22;
+  if(job.modalidad==='Remoto'){ pts += 15; res.reasons.push('Es una oferta remota: puedes trabajar desde cualquier ciudad'); }
+  else if(c.ciudad && norm(c.ciudad)===norm(job.ubicacion)){ pts += 15; res.reasons.push('Tu ciudad coincide: '+job.ubicacion); }
+  else res.gaps.push('La oferta es en '+job.ubicacion+(c.ciudad && c.ciudad!=='Sin especificar' ? ' y tu ciudad es '+c.ciudad : ''));
+  var exp = parseMoneyRange(prefs.salarioEsperado);
+  if(!exp) pts += 7;
+  else if((job.salaryMax||0) >= exp[0]){ pts += 15; res.reasons.push('El salario cubre lo que esperas'); }
+  else res.gaps.push('El salario máximo ('+money(job.salaryMax||0)+') queda por debajo de lo que esperas');
+  var need = EDU_LEVELS[norm(job.nivelEducativo)], have = candEduLevel(c);
+  if(need===undefined || have===null){ pts += 5; if(have===null) res.gaps.push('Agrega tu educación a la hoja de vida'); }
+  else if(have>=need){ pts += 10; res.reasons.push('Cumples el nivel educativo ('+job.nivelEducativo+')'); }
+  else { pts += (have===need-1 ? 5 : 0); res.gaps.push('Piden nivel '+job.nivelEducativo); }
+  var req = requiredYears(job.experiencia), yrs = candYears(c);
+  if(req===0){ pts += 10; res.reasons.push('No exigen experiencia previa'); }
+  else if(yrs>=req){ pts += 10; res.reasons.push('Tu experiencia cubre lo pedido ('+job.experiencia+')'); }
+  else { pts += 10*Math.min(1, yrs/req); res.gaps.push('Piden '+job.experiencia+' de experiencia'); }
+  var key = {'Remoto':'remoto','Híbrido':'hibrido','Presencial':'presencial'}[job.modalidad];
+  if(key && prefs[key]){ pts += 5; res.reasons.push('Coincide con tu modalidad preferida ('+job.modalidad+')'); }
+  res.score = Math.max(0, Math.min(100, Math.round(pts)));
+  return res;
+}
+function matchScore(job){ var c = currentCandidate(); return c ? matchFor(job, c).score : (job.match||0); }
+
+/* ---------------- Completitud real del perfil ---------------- */
+function profileCompletion(c){
+  var checks = [
+    [10, !!(c.nombre && c.apellido)],
+    [10, !!(c.cargo && c.cargo!=='Sin especificar')],
+    [10, !!(c.sobreMi && c.sobreMi.indexOf('Aún no has agregado')===-1)],
+    [5,  !!(c.ciudad && c.ciudad!=='Sin especificar')],
+    [5,  !!c.telefono],
+    [10, !!c.fotoUrl],
+    [15, (c.experiencia||[]).length>0],
+    [10, (c.educacion||[]).length>0],
+    [15, (c.habilidades||[]).length>=3],
+    [5,  (c.idiomas||[]).length>0],
+    [5,  !!c.cvPath]
+  ];
+  return checks.reduce(function(sum,x){ return sum + (x[1]?x[0]:0); }, 0);
+}
+function profileTips(c){
+  var t = [];
+  if(!c.fotoUrl) t.push('Sube una foto de perfil');
+  if(!c.cargo || c.cargo==='Sin especificar') t.push('Escribe tu cargo profesional');
+  if(!c.sobreMi || c.sobreMi.indexOf('Aún no has agregado')!==-1) t.push('Cuenta quién eres en "Sobre mí"');
+  if(!(c.experiencia||[]).length) t.push('Agrega tu experiencia laboral');
+  if(!(c.educacion||[]).length) t.push('Agrega tus estudios');
+  if((c.habilidades||[]).length<3) t.push('Agrega al menos 3 habilidades');
+  if(!(c.idiomas||[]).length) t.push('Agrega tus idiomas');
+  if(!c.cvPath) t.push('Adjunta tu hoja de vida en PDF');
+  return t;
+}
+function avatarHTML(p, cls){
+  cls = cls || '';
+  if(p && p.fotoUrl) return '<div class="avatar '+cls+'" style="overflow:hidden;padding:0;"><img src="'+esc(p.fotoUrl)+'" alt="" style="width:100%;height:100%;object-fit:cover;"></div>';
+  var ini = p && p.apellido!==undefined ? initials(p.nombre, p.apellido) : ((p && p.nombre && p.nombre[0]) || '?');
+  return '<div class="avatar '+cls+'">'+esc(ini)+'</div>';
+}
 function companyLogoHTML(comp, extraStyle){
   extraStyle = extraStyle || '';
   if(comp && comp.logoUrl) return '<div class="job-logo" style="'+extraStyle+'overflow:hidden;padding:0;"><img src="'+esc(comp.logoUrl)+'" alt="'+esc(comp.nombre)+'" style="width:100%;height:100%;object-fit:cover;"></div>';
@@ -943,7 +1056,7 @@ function jobCardHTML(job, opts){
         '<div class="role">'+esc(job.title)+'</div>'+
         '<div class="company-line">'+esc(comp.nombre)+(comp.verificada?' <span class="badge-verified">'+icon('verified',13)+' Verificada</span>':'')+'</div>'+
       '</div>'+
-      (cand?'<div class="match"><div class="match-value">'+job.match+'%</div><div class="match-label">Match</div></div>':'')+
+      (cand?'<div class="match"><div class="match-value">'+matchFor(job,cand).score+'%</div><div class="match-label">Match</div></div>':'')+
     '</div>'+
     '<div class="job-meta">'+
       '<span>'+icon('location',14)+' '+esc(job.ubicacion)+'</span>'+
@@ -1016,6 +1129,8 @@ function render(){
   else if(seg==='messages'){ if(!db.session){go('#/login');return;} html = layoutApp(db.session.role,'messages', viewMessages(parts[1])); }
   else if(seg==='notifications'){ if(!db.session){go('#/login');return;} html = layoutApp(db.session.role,'notifications', viewNotifications()); }
   else if(seg==='settings'){ if(!db.session){go('#/login');return;} html = layoutApp(db.session.role,'settings', viewSettings()); }
+  else if(seg==='profile-edit'){ if(!requireAuth('candidate'))return; html = layoutApp('candidate','profile', viewProfileEdit()); }
+  else if(seg==='candidate'){ if(!db.session || (db.session.role!=='company' && !db.isAdmin)){ go('#/login'); return; } html = layoutApp(db.session.role==='company'?'company':'admin','candidates', viewCandidateProfile(parts[1])); }
   else if(seg==='candidate-search'){ if(!requireAuth('candidate'))return; html = layoutApp('candidate','jobs', viewJobsApp()); }
   else if(seg==='company'){ if(!requireAuth('company'))return; html = layoutApp('company','home', viewCompanyHome()); }
   else if(seg==='post-job'){ if(!requireAuth('company'))return; html = layoutApp('company','post-job', viewPostJob(parts[1])); }
@@ -1023,7 +1138,7 @@ function render(){
   else if(seg==='candidates'){ if(!requireAuth('company'))return; html = layoutApp('company','candidates', viewCandidates()); }
   else if(seg==='pipeline'){ if(!requireAuth('company'))return; html = layoutApp('company','pipeline', viewPipeline()); }
   else if(seg==='company-profile'){ if(!requireAuth('company'))return; html = layoutApp('company','company-profile', viewCompanyProfile()); }
-  else if(seg==='company-stats'){ if(!requireAuth('company'))return; html = layoutApp('company','company-stats', viewCompanyStats()); }
+  else if(seg==='company-stats'){ if(!requireAuth('company'))return; if(SUPABASE_READY && Date.now()-companyViews.loadedAt>30000) loadCompanyViews(); html = layoutApp('company','company-stats', viewCompanyStats()); }
   else if(seg==='admin') html = (SUPABASE_READY && db.isAdmin) ? layoutApp('admin','admin', viewAdmin()) : layoutAuth(viewAdminGate());
   else html = layoutPublic('<div class="wrap section"><div class="empty-state glass">'+icon('search',34)+'<strong>Página no encontrada</strong>Esa sección no existe.</div></div>');
 
@@ -1150,6 +1265,7 @@ function layoutApp(role, active, content){
   var who = isCand ? currentCandidate() : (isComp ? currentCompany() : {nombre:'Administrador'});
   var nameShown = isCand ? (who.nombre+' '+who.apellido) : who.nombre;
   var initialsShown = isCand ? initials(who.nombre,who.apellido) : (who.nombre?who.nombre[0]:'A');
+  var avatarShown = isCand ? avatarHTML(who) : '<div class="avatar">'+initialsShown+'</div>';
   return '<div class="app-shell">'+
     '<aside class="sidebar'+(sidebarCollapsed?' collapsed':'')+'">'+
       '<div class="side-logo">'+
@@ -1159,7 +1275,7 @@ function layoutApp(role, active, content){
       '</div>'+
       '<div class="side-nav">'+(isCand?sideNavCandidate(active):isComp?sideNavCompany(active):sideNavAdmin(active))+'</div>'+
       '<div class="side-foot">'+
-        (isAdmin?'':'<div class="row gap12" style="padding:6px 10px 12px;"><div class="avatar">'+initialsShown+'</div><div class="user-name-block" style="min-width:0;"><div style="font-weight:700;font-size:0.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;">'+esc(nameShown)+'</div><div class="muted" style="font-size:0.74rem;">'+(isCand?'Candidato':'Empresa')+'</div></div></div>')+
+        (isAdmin?'':'<div class="row gap12" style="padding:6px 10px 12px;">'+avatarShown+'<div class="user-name-block" style="min-width:0;"><div style="font-weight:700;font-size:0.86rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;">'+esc(nameShown)+'</div><div class="muted" style="font-size:0.74rem;">'+(isCand?'Candidato':'Empresa')+'</div></div></div>')+
         '<button class="btn btn-ghost btn-full btn-sm" onclick="logout()" title="Cerrar sesión">'+icon('logout',15)+'<span class="btn-label"> Cerrar sesión</span></button>'+
       '</div>'+
     '</aside>'+
@@ -1171,7 +1287,7 @@ function layoutApp(role, active, content){
         '<div class="apptop-icons">'+
           (isAdmin?'':'<button class="icon-btn" onclick="go(\'#/messages\')" title="Mensajes">'+icon('message',18)+(unreadMsg?'<span class="icon-dot"></span>':'')+'</button>'+
           '<button class="icon-btn" onclick="go(\'#/notifications\')" title="Notificaciones">'+icon('bell',18)+(unreadNotif?'<span class="icon-dot"></span>':'')+'</button>')+
-          '<div class="user-chip"><div class="avatar">'+initialsShown+'</div><span style="font-size:0.84rem;font-weight:600;" class="hide-mobile">'+esc(nameShown)+'</span></div>'+
+          '<div class="user-chip">'+avatarShown+'<span style="font-size:0.84rem;font-weight:600;" class="hide-mobile">'+esc(nameShown)+'</span></div>'+
         '</div>'+
       '</div></header>'+
       '<div class="content-pad">'+content+'</div>'+
@@ -1368,7 +1484,7 @@ function sortJobs(list){
   var l = list.slice();
   if(jobSort==='recientes') l.sort(function(a,b){return String(b.createdAt||'').localeCompare(String(a.createdAt||'')) || b.id.localeCompare(a.id);});
   else if(jobSort==='salario') l.sort(function(a,b){return b.salaryMax-a.salaryMax;});
-  else if(jobSort==='match') l.sort(function(a,b){return b.match-a.match;});
+  else if(jobSort==='match') l.sort(function(a,b){return matchScore(b)-matchScore(a);});
   return l;
 }
 function applyJobFilters(){
@@ -1435,6 +1551,8 @@ function viewJobDetail(id){
   if(!jobIsActive(job) && !isOwnerOrAdmin) return '<div class="wrap section"><div class="empty-state glass">'+icon('briefcase',34)+'<strong>Esta oferta ya no está disponible</strong>La empresa la pausó o la cerró.<div style="margin-top:16px;"><a href="#/jobs" class="btn btn-primary">Ver otras ofertas</a></div></div></div>';
   var comp = companyOf(job);
   var cand = currentCandidate();
+  var mres = cand ? matchFor(job, cand) : null;
+  trackJobView(job);
   var applied = cand ? db.applications.some(function(a){return a.jobId===job.id && a.candidateId===cand.id;}) : false;
   var saved = cand && db.savedJobs[cand.id] && db.savedJobs[cand.id].indexOf(job.id)!==-1;
   return '<section class="wrap section" style="padding-top:36px;">'+
@@ -1446,7 +1564,7 @@ function viewJobDetail(id){
           '<h1 style="font-size:1.7rem;margin-top:6px;">'+esc(job.title)+'</h1>'+
           '<div class="job-tags" style="margin-top:10px;">'+job.habilidades.map(function(h){return '<span class="tag">'+esc(h)+'</span>';}).join('')+'<span class="tag">'+esc(job.modalidad)+'</span></div>'+
         '</div>'+
-        (cand?'<div class="match" style="text-align:center;">'+ringSVG(job.match,72)+'</div>':'')+
+        (cand?'<div class="match" style="text-align:center;">'+ringSVG(mres.score,72)+'</div>':'')+
       '</div>'+
       '<div class="jd-info-grid">'+
         jdBox('Salario', money(job.salaryMin)+' – '+money(job.salaryMax))+
@@ -1472,8 +1590,11 @@ function viewJobDetail(id){
         '<div class="jd-block glass"><div class="row between" style="flex-wrap:wrap;gap:10px;"><span class="muted" style="font-size:0.85rem;">Publicada: '+job.fechaPublicacion+'</span><span class="muted" style="font-size:0.85rem;">Fecha límite para postularse: '+job.fechaLimite+'</span></div></div>'+
       '</div>'+
       '<div class="sticky-apply">'+
-        (cand?'<div class="jd-block glass"><h4>Job-In Match — '+job.match+'%</h4>'+ringSVG(job.match,90)+
-          '<div class="match-explain">'+job.matchReasons.map(function(r){return '<div class="ok-line">'+icon('check',14)+' '+esc(r)+'</div>';}).join('')+'</div></div>':
+        (cand?'<div class="jd-block glass"><h4>Job-In Match — '+mres.score+'%</h4>'+ringSVG(mres.score,90)+
+          '<p class="muted" style="font-size:0.8rem;margin-top:10px;">¿Por qué esta oferta coincide contigo?</p>'+
+          '<div class="match-explain">'+(mres.reasons.length ? mres.reasons.map(function(r){return '<div class="ok-line">'+icon('check',14)+' '+esc(r)+'</div>';}).join('') : '<div class="ok-line" style="color:var(--gray-dim);">Aún no hay coincidencias. Completa tu hoja de vida para mejorar tu Match.</div>')+'</div>'+
+          (mres.gaps.length ? '<p class="muted" style="font-size:0.8rem;margin-top:14px;">Para mejorar tu Match:</p><div class="match-explain">'+mres.gaps.map(function(g){return '<div class="ok-line"><span style="color:var(--warn);margin-top:2px;">•</span> '+esc(g)+'</div>';}).join('')+'</div>' : '')+
+          '</div>':
           '<div class="jd-block glass"><h4>Job-In Match</h4><p class="muted" style="font-size:0.85rem;">Inicia sesión como candidato para ver tu porcentaje de compatibilidad con esta oferta.</p><button class="btn btn-primary btn-full" style="margin-top:12px;" onclick="go(\'#/login\')">Iniciar sesión</button></div>')+
         '<div class="jd-block glass"><h4>Sobre la empresa</h4><div class="row gap12">'+companyLogoHTML(comp)+'<div><div style="font-weight:700;">'+esc(comp.nombre)+'</div><div class="muted" style="font-size:0.8rem;">'+esc(comp.sector)+' · '+esc(comp.ciudad)+'</div></div></div><p class="muted" style="font-size:0.85rem;margin-top:12px;">'+esc(comp.descripcion)+'</p></div>'+
       '</div>'+
@@ -1850,13 +1971,9 @@ function viewRemoteError(){
 function viewDashboard(){
   var cand = currentCandidate();
   var myApps = db.applications.filter(function(a){return a.candidateId===cand.id;});
-  var recommended = activeJobs().sort(function(a,b){return b.match-a.match;}).slice(0,3);
-  var activity = [
-    {t:'Postulación enviada a Diseñador UX/UI', when:'Hace 1 día'},
-    {t:'NovaTech vio tu perfil', when:'Hace 1 día'},
-    {t:'Nueva recomendación: Analista de Datos en DataPro', when:'Hace 2 días'},
-    {t:'Guardaste la oferta Analista de Datos', when:'Hace 2 días'}
-  ];
+  var recommended = activeJobs().sort(function(a,b){return matchScore(b)-matchScore(a);}).slice(0,3);
+  var activity = myNotifications().slice(0,5).map(function(n){ return {t:n.text, when:n.fecha}; });
+  var pct = profileCompletion(cand), tip = profileTips(cand)[0];
   return '<div class="dash-top">'+
       '<div class="welcome-card glass">'+
         '<div class="pill" style="margin-bottom:10px;">Panel de candidato</div>'+
@@ -1868,10 +1985,10 @@ function viewDashboard(){
         '</div>'+
       '</div>'+
       '<div class="glass" style="padding:22px;display:flex;flex-direction:column;justify-content:space-between;">'+
-        '<div class="row gap16">'+ringSVG(cand.perfilCompletado,74)+
-          '<div><div style="font-weight:700;">Perfil completado '+cand.perfilCompletado+'%</div><p class="muted" style="font-size:0.82rem;margin-top:4px;">Completa tu perfil para mejorar tu Job-In Match.</p></div>'+
+        '<div class="row gap16">'+ringSVG(pct,74)+
+          '<div><div style="font-weight:700;">Perfil completado '+pct+'%</div><p class="muted" style="font-size:0.82rem;margin-top:4px;">'+(tip ? 'Siguiente paso: '+esc(tip)+'.' : '¡Tu perfil está completo!')+'</p></div>'+
         '</div>'+
-        '<button class="btn btn-primary btn-full btn-sm" style="margin-top:16px;" onclick="go(\'#/profile\')">Completar perfil</button>'+
+        '<button class="btn btn-primary btn-full btn-sm" style="margin-top:16px;" onclick="go(\'#/profile-edit\')">Completar perfil</button>'+
       '</div>'+
     '</div>'+
     '<div class="grid2" style="align-items:start;">'+
@@ -1881,7 +1998,7 @@ function viewDashboard(){
       '</div>'+
       '<div>'+
         '<div class="section-head" style="margin-bottom:12px;"><h4 style="font-family:var(--font-d);">Actividad reciente</h4></div>'+
-        '<div class="glass" style="padding:8px 20px;"><div class="activity-list">'+activity.map(function(a){return '<div class="activity-item"><div class="activity-dot"></div><div><div>'+esc(a.t)+'</div><div class="activity-time">'+esc(a.when)+'</div></div></div>';}).join('')+'</div></div>'+
+        '<div class="glass" style="padding:8px 20px;"><div class="activity-list">'+(activity.length ? activity.map(function(a){return '<div class="activity-item"><div class="activity-dot"></div><div><div>'+esc(a.t)+'</div><div class="activity-time">'+esc(a.when)+'</div></div></div>';}).join('') : '<p class="muted" style="padding:16px 0;font-size:0.86rem;">Aquí verás tus avisos: postulaciones, mensajes y cambios de etapa.</p>')+'</div></div>'+
       '</div>'+
     '</div>';
 }
@@ -1890,7 +2007,7 @@ function viewDashboard(){
 var recoTab = 'match';
 function viewRecommendations(){
   var list = activeJobs();
-  if(recoTab==='match') list.sort(function(a,b){return b.match-a.match;});
+  if(recoTab==='match') list.sort(function(a,b){return matchScore(b)-matchScore(a);});
   else if(recoTab==='recientes') list.sort(function(a,b){return String(b.createdAt||'').localeCompare(String(a.createdAt||'')) || b.id.localeCompare(a.id);});
   else if(recoTab==='salario') list.sort(function(a,b){return b.salaryMax-a.salaryMax;});
   else if(recoTab==='cerca'){ var cand=currentCandidate(); list = list.filter(function(j){return j.ubicacion===cand.ciudad;}).concat(list.filter(function(j){return j.ubicacion!==cand.ciudad;})); }
@@ -1915,13 +2032,13 @@ function tabBtn(v,label){ return '<button class="tab-btn '+(recoTab===v?'active'
 function viewProfile(){
   var c = currentCandidate();
   return '<div class="profile-head glass">'+
-    '<div class="avatar lg">'+initials(c.nombre,c.apellido)+'</div>'+
+    avatarHTML(c,'lg')+
     '<div style="flex:1;min-width:220px;">'+
       '<h2>'+esc(c.nombre)+' '+esc(c.apellido)+'</h2>'+
       '<div class="muted" style="margin-top:4px;">'+esc(c.cargo)+' · '+esc(c.ciudad)+'</div>'+
-      '<div class="row gap8" style="margin-top:10px;">'+ringSVG(c.perfilCompletado,44)+'<span class="muted" style="font-size:0.85rem;">Perfil completado</span></div>'+
+      '<div class="row gap8" style="margin-top:10px;">'+ringSVG(profileCompletion(c),44)+'<span class="muted" style="font-size:0.85rem;">Perfil completado</span></div>'+
     '</div>'+
-    '<button class="btn btn-primary" onclick="showToast(\'Función de edición disponible próximamente (demo)\')">'+icon('edit',15)+' Editar perfil</button>'+
+    '<button class="btn btn-primary" onclick="go(\'#/profile-edit\')">'+icon('edit',15)+' Editar perfil</button>'+
   '</div>'+
   '<div class="grid2" style="align-items:start;margin-top:16px;">'+
     '<div>'+
@@ -1934,7 +2051,7 @@ function viewProfile(){
       '<div class="profile-block glass"><h4>'+icon('star',17)+' Habilidades</h4>'+c.habilidades.map(function(h){return '<span class="skill-chip">'+esc(h)+'</span>';}).join('')+'</div>'+
       '<div class="profile-block glass"><h4>'+icon('globe',17)+' Idiomas</h4>'+c.idiomas.map(function(i){return '<div class="exp-item" style="padding:8px 0;"><div class="row between"><span>'+esc(i.idioma)+'</span><span class="muted" style="font-size:0.82rem;">'+esc(i.nivel)+'</span></div></div>';}).join('')+'</div>'+
       '<div class="profile-block glass"><h4>'+icon('checkCircle',17)+' Certificaciones</h4>'+c.certificaciones.map(function(cf){return '<div class="exp-item"><div class="t1">'+esc(cf.nombre)+'</div><div class="t3">'+esc(cf.entidad)+' · '+esc(cf.anio)+'</div></div>';}).join('')+'</div>'+
-      '<div class="profile-block glass"><h4>'+icon('share',17)+' Redes profesionales</h4><p class="muted" style="font-size:0.85rem;">Agrega tu LinkedIn u otras redes profesionales desde "Editar perfil".</p></div>'+
+      '<div class="profile-block glass"><h4>'+icon('share',17)+' Redes profesionales</h4>'+profileLinksHTML(c)+'</div>'+
     '</div>'+
   '</div>';
 }
@@ -1944,7 +2061,7 @@ var cvSection = 'personal';
 function viewCV(){
   var c = currentCandidate();
   var sections = [['personal','Información personal'],['perfil','Perfil profesional'],['experiencia','Experiencia'],['educacion','Educación'],['habilidades','Habilidades'],['idiomas','Idiomas'],['certificaciones','Certificaciones'],['proyectos','Proyectos'],['referencias','Referencias']];
-  return '<div class="section-head"><h2>Crea tu hoja de vida</h2><div class="row gap8"><button class="btn btn-ghost btn-sm" onclick="showToast(\'CV guardado (demo)\')">'+icon('save',15)+' Guardar</button><button class="btn btn-primary btn-sm" onclick="showToast(\'Descargando CV en PDF (demo)\')">'+icon('download',15)+' Descargar CV</button></div></div>'+
+  return '<div class="section-head"><h2>Crea tu hoja de vida</h2><div class="row gap8"><button class="btn btn-ghost btn-sm" onclick="showToast(\'Tus cambios se guardan automáticamente\')">'+icon('save',15)+' Guardar</button><button class="btn btn-primary btn-sm" onclick="downloadCvPdf(currentCandidate())">'+icon('download',15)+' Descargar CV</button></div></div>'+
   '<div class="cv-layout">'+
     '<div>'+
       '<div class="tabs" style="margin-bottom:16px;flex-wrap:wrap;">'+sections.map(function(s){return '<button class="tab-btn '+(cvSection===s[0]?'active':'')+'" onclick="cvSection=\''+s[0]+'\';render()">'+s[1]+'</button>';}).join('')+'</div>'+
@@ -2103,7 +2220,7 @@ function viewApplications(){
           '<div style="text-align:right;"><span class="status-badge status-'+statusClass(a.estado)+'">'+esc(a.estado)+'</span><div class="muted" style="font-size:0.78rem;margin-top:6px;">Postulado: '+esc(a.fecha)+'</div></div>'+
         '</div>'+
         '<div class="timeline">'+steps.map(function(s,i){return '<div class="tl-step '+(i<=doneIdx?'done':'')+'"><div class="tl-line"></div><div class="tl-dot"></div><div class="tl-label">'+s+'</div></div>';}).join('')+'</div>'+
-        '<div class="row gap8" style="margin-top:14px;"><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+job.id+'\')">Ver oferta</button><button class="btn btn-ghost btn-sm" onclick="go(\'#/messages\')">'+icon('message',14)+' Mensaje a la empresa</button></div>'+
+        '<div class="row gap8" style="margin-top:14px;"><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+job.id+'\')">Ver oferta</button><button class="btn btn-ghost btn-sm" onclick="openThreadWith(\''+job.companyId+'\')">'+icon('message',14)+' Mensaje a la empresa</button></div>'+
       '</div>';
     }).join('');
 }
@@ -2348,26 +2465,351 @@ function viewCandidates(){
   var comp = currentCompany();
   var myJobIds = db.jobs.filter(function(j){return j.companyId===comp.id;}).map(function(j){return j.id;});
   var apps = db.applications.filter(function(a){return myJobIds.indexOf(a.jobId)!==-1;});
-  var rows = apps.map(function(a){
-    var cand = candidateById(a.candidateId); var job = jobById(a.jobId);
-    return {a:a, cand:cand, job:job};
-  });
-  if(candFilter.sort==='match') rows.sort(function(x,y){return (y.job.match)-(x.job.match);});
+  var rows = apps.map(function(a){ return {a:a, cand:candidateById(a.candidateId), job:jobById(a.jobId)}; }).filter(function(r){ return r.cand && r.job; });
+  if(candFilter.sort==='match') rows.sort(function(x,y){return matchFor(y.job,y.cand).score-matchFor(x.job,x.cand).score;});
+  else if(candFilter.sort==='exp') rows.sort(function(x,y){return candYears(y.cand)-candYears(x.cand);});
+  else if(candFilter.sort==='edu') rows.sort(function(x,y){return (candEduLevel(y.cand)||0)-(candEduLevel(x.cand)||0);});
+  else if(candFilter.sort==='ubi') rows.sort(function(x,y){return String(x.cand.ciudad||'').localeCompare(String(y.cand.ciudad||''),'es');});
+  var sel = function(v){ return candFilter.sort===v ? ' selected' : ''; };
   return '<div class="section-head"><h2>Candidatos</h2><span class="muted">'+rows.length+' candidatos</span></div>'+
   '<div class="row gap8" style="margin-bottom:16px;flex-wrap:wrap;">'+
     '<select style="background:var(--bg-1);border:1px solid var(--border-strong);color:var(--white);border-radius:8px;padding:9px 12px;" onchange="candFilter.sort=this.value;render()">'+
-      '<option value="match">Ordenar por: Mayor Match</option><option value="exp">Experiencia</option><option value="edu">Educación</option><option value="ubi">Ubicación</option>'+
+      '<option value="match"'+sel('match')+'>Ordenar por: Mayor Match</option><option value="exp"'+sel('exp')+'>Experiencia</option><option value="edu"'+sel('edu')+'>Educación</option><option value="ubi"'+sel('ubi')+'>Ubicación</option>'+
     '</select>'+
   '</div>'+
   (rows.length ? rows.map(function(r){
     return '<div class="cand-row glass">'+
-      '<div class="cand-info"><div class="avatar">'+initials(r.cand.nombre,r.cand.apellido||'')+'</div><div><div class="name">'+esc(r.cand.nombre)+' '+esc(r.cand.apellido||'')+'</div><div class="role">'+esc(r.cand.cargo)+'</div></div></div>'+
+      '<div class="cand-info">'+avatarHTML(r.cand)+'<div><div class="name">'+esc(r.cand.nombre)+' '+esc(r.cand.apellido||'')+'</div><div class="role">'+esc(r.cand.cargo||'')+'</div></div></div>'+
       '<div class="muted" style="font-size:0.84rem;">Postuló a<br><strong style="color:var(--white);">'+esc(r.job.title)+'</strong></div>'+
-      '<div class="muted" style="font-size:0.84rem;">'+icon('target',14)+' '+r.job.match+'% Match</div>'+
+      '<div class="muted" style="font-size:0.84rem;">'+icon('target',14)+' '+matchFor(r.job,r.cand).score+'% Match</div>'+
       '<div><span class="status-badge status-'+statusClass(r.a.estado)+'">'+esc(r.a.estado)+'</span></div>'+
-      '<div class="row gap8"><button class="btn btn-ghost btn-sm" onclick="showToast(\'Abriendo perfil de \'+'+"'"+r.cand.nombre+"'"+')">Ver perfil</button><button class="btn btn-ghost btn-sm" onclick="showToast(\'Abriendo CV (demo)\')">Ver CV</button><button class="btn btn-primary btn-sm" onclick="go(\'#/messages\')">Contactar</button></div>'+
+      '<div class="row gap8"><button class="btn btn-ghost btn-sm" onclick="go(\'#/candidate/'+r.cand.id+'\')">Ver perfil</button><button class="btn btn-ghost btn-sm" onclick="openCandidateCv(\''+r.cand.id+'\')">Ver CV</button><button class="btn btn-primary btn-sm" onclick="openThreadWith(\''+r.cand.id+'\')">Contactar</button></div>'+
     '</div>';
-  }).join('') : '<div class="empty-state glass">'+icon('user',30)+'<strong>Aún no tienes candidatos</strong></div>');
+  }).join('') : '<div class="empty-state glass">'+icon('user',30)+'<strong>Aún no tienes candidatos</strong>Cuando alguien se postule a tus ofertas aparecerá aquí.</div>');
+}
+
+/* ================= EDITAR PERFIL, FOTO Y CV ADJUNTO ================= */
+function normalizeUrl(u){
+  u = String(u||'').trim();
+  if(!u) return '';
+  if(/^https?:\/\//i.test(u)) return u;
+  if(/^[a-z][a-z0-9+.-]*:/i.test(u)) return '';   /* descarta javascript:, mailto:, etc. */
+  return 'https://' + u;
+}
+function profileLinksHTML(c){
+  function link(label, url){
+    if(!/^https?:\/\//i.test(url||'')) return '';
+    return '<div class="exp-item"><div class="t1">'+label+'</div><div class="t3"><a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">'+esc(url)+'</a></div></div>';
+  }
+  var out = link('LinkedIn', c.linkedin) + link('Sitio web / portafolio', c.sitioWeb);
+  return out || '<p class="muted" style="font-size:0.85rem;">Aún no agregaste enlaces. Puedes hacerlo desde "Editar perfil".</p>';
+}
+function viewProfileEdit(){
+  var c = currentCandidate();
+  var pct = profileCompletion(c), tips = profileTips(c);
+  var cvBlock;
+  if(!SUPABASE_READY){
+    cvBlock = '<p class="muted" style="font-size:0.85rem;">Adjuntar un PDF requiere que la plataforma esté conectada a Supabase.</p>';
+  } else if(c.cvPath){
+    cvBlock = '<div class="exp-item" style="border:none;"><div class="t1">'+icon('doc',16)+' '+esc(c.cvNombre||'Hoja de vida.pdf')+'</div><div class="t3">Solo la verán las empresas a las que te postules.</div></div>'+
+      '<div class="row gap8" style="flex-wrap:wrap;"><button class="btn btn-ghost btn-sm" onclick="openCvPath(\''+esc(c.cvPath)+'\')">Ver</button>'+
+      '<label class="btn btn-ghost btn-sm" style="cursor:pointer;">Reemplazar<input type="file" accept="application/pdf" style="display:none;" onchange="uploadCvFile(this)"></label>'+
+      '<button class="btn btn-danger btn-sm" onclick="removeCvFile()">Quitar</button></div>';
+  } else {
+    cvBlock = '<p class="muted" style="font-size:0.85rem;margin-bottom:12px;">Sube tu hoja de vida en PDF (máximo 5 MB). Solo la verán las empresas a las que te postules.</p>'+
+      '<label class="btn btn-primary btn-sm" style="cursor:pointer;">'+icon('upload',14)+' Subir PDF<input type="file" accept="application/pdf" style="display:none;" onchange="uploadCvFile(this)"></label>';
+  }
+  return '<div class="section-head"><h2>Editar perfil</h2><button class="btn btn-ghost btn-sm" onclick="go(\'#/profile\')">Volver al perfil</button></div>'+
+  '<div class="grid2" style="align-items:start;">'+
+    '<div class="glass" style="padding:22px;">'+
+      '<div class="row gap16" style="margin-bottom:20px;flex-wrap:wrap;">'+avatarHTML(c,'lg')+
+        '<div><label class="btn btn-ghost btn-sm" style="cursor:pointer;">'+icon('upload',14)+' '+(c.fotoUrl?'Cambiar foto':'Subir foto')+'<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="uploadAvatar(this)"></label>'+
+        (c.fotoUrl?' <button class="btn btn-ghost btn-sm" onclick="removeAvatar()">Quitar</button>':'')+
+        '<div class="field-note">PNG, JPG o WEBP, máximo 2 MB.</div></div></div>'+
+      '<div class="field"><label>Cargo profesional</label><input id="pe-cargo" value="'+esc(c.cargo==='Sin especificar'?'':c.cargo)+'" placeholder="Ej. Desarrollador Frontend"></div>'+
+      '<div class="field" style="margin-top:14px;"><label>Sobre mí</label><textarea id="pe-sobre" rows="5" maxlength="1200" placeholder="Cuéntale a las empresas quién eres y qué sabes hacer">'+esc(c.sobreMi && c.sobreMi.indexOf('Aún no has agregado')===-1 ? c.sobreMi : '')+'</textarea></div>'+
+      '<div class="grid2" style="margin-top:14px;"><div class="field"><label>Ciudad</label><input id="pe-ciudad" list="colombiaCities" value="'+esc(c.ciudad==='Sin especificar'?'':c.ciudad)+'"></div>'+
+      '<div class="field"><label>Teléfono</label><input id="pe-tel" value="'+esc(c.telefono||'')+'"></div></div>'+
+      '<div class="field" style="margin-top:14px;"><label>LinkedIn</label><input id="pe-linkedin" value="'+esc(c.linkedin||'')+'" placeholder="linkedin.com/in/tu-perfil"></div>'+
+      '<div class="field" style="margin-top:14px;"><label>Sitio web o portafolio</label><input id="pe-web" value="'+esc(c.sitioWeb||'')+'" placeholder="tusitio.com"></div>'+
+      '<button class="btn btn-primary btn-full" style="margin-top:20px;" onclick="saveProfileEdit()">Guardar cambios</button>'+
+    '</div>'+
+    '<div>'+
+      '<div class="glass" style="padding:22px;margin-bottom:16px;"><div class="row gap16">'+ringSVG(pct,74)+'<div><div style="font-weight:700;">Perfil completado '+pct+'%</div><p class="muted" style="font-size:0.82rem;margin-top:4px;">Mientras más completo, mejor tu Job-In Match.</p></div></div>'+
+        (tips.length ? '<div class="match-explain" style="margin-top:16px;">'+tips.map(function(t){return '<div class="ok-line"><span style="color:var(--warn);margin-top:2px;">•</span> '+esc(t)+'</div>';}).join('')+'</div>' : '')+
+        '<button class="btn btn-ghost btn-sm btn-full" style="margin-top:16px;" onclick="go(\'#/cv\')">Editar experiencia, estudios e idiomas</button></div>'+
+      '<div class="glass" style="padding:22px;"><h4 style="margin-bottom:12px;">Hoja de vida adjunta (PDF)</h4>'+cvBlock+'</div>'+
+    '</div>'+
+  '</div>';
+}
+function saveProfileEdit(){
+  var c = currentCandidate(); if(!c) return;
+  var cargo = byId('pe-cargo').value.trim(), sobre = byId('pe-sobre').value.trim(), ciudad = byId('pe-ciudad').value.trim();
+  var tel = byId('pe-tel').value.trim(), li = byId('pe-linkedin').value.trim(), web = byId('pe-web').value.trim();
+  if([cargo,sobre,ciudad,tel,li,web].some(containsBadWords)){ showToast('Revisa tus datos: contienen lenguaje que no está permitido en Job-In.'); return; }
+  c.cargo = cargo || 'Sin especificar';
+  c.sobreMi = sobre || 'Aún no has agregado una descripción de tu perfil.';
+  c.ciudad = ciudad || 'Sin especificar';
+  c.telefono = tel;
+  c.linkedin = normalizeUrl(li);
+  c.sitioWeb = normalizeUrl(web);
+  saveDB();
+  showToast('Perfil actualizado');
+  go('#/profile');
+}
+function bucketUpload(bucket, file, uid, prefix){
+  var ext = file.type==='image/png' ? 'png' : (file.type==='image/webp' ? 'webp' : (file.type==='application/pdf' ? 'pdf' : 'jpg'));
+  var path = uid + '/' + prefix + '-' + Date.now() + '.' + ext;
+  return sb.storage.from(bucket).upload(path, file, {upsert:true, contentType:file.type}).then(function(r){ return {error:r.error, path:path}; });
+}
+function uploadAvatar(input){
+  var file = input.files && input.files[0], c = currentCandidate();
+  if(!file || !c) return;
+  if(file.size > 2*1024*1024){ showToast('La foto debe pesar menos de 2 MB.'); input.value=''; return; }
+  if(!/^image\/(png|jpeg|webp)$/.test(file.type)){ showToast('Formato no permitido. Usa PNG, JPG o WEBP.'); input.value=''; return; }
+  if(!SUPABASE_READY){
+    var reader = new FileReader();
+    reader.onload = function(){ c.fotoUrl = reader.result; saveDB(); render(); showToast('Foto actualizada'); };
+    reader.readAsDataURL(file);
+    return;
+  }
+  showToast('Subiendo foto…');
+  bucketUpload('avatars', file, c.id, 'foto').then(function(r){
+    if(r.error){ showToast('No se pudo subir la foto: ' + r.error.message); return; }
+    c.fotoUrl = sb.storage.from('avatars').getPublicUrl(r.path).data.publicUrl;
+    saveDB(); render(); showToast('Foto actualizada');
+  });
+}
+function removeAvatar(){ var c = currentCandidate(); if(!c) return; delete c.fotoUrl; saveDB(); render(); showToast('Foto eliminada'); }
+function uploadCvFile(input){
+  var file = input.files && input.files[0], c = currentCandidate();
+  if(!file || !c) return;
+  if(!SUPABASE_READY){ showToast('Adjuntar un PDF requiere Supabase conectado.'); input.value=''; return; }
+  if(file.type !== 'application/pdf'){ showToast('Solo se permiten archivos PDF.'); input.value=''; return; }
+  if(file.size > 5*1024*1024){ showToast('El PDF debe pesar menos de 5 MB.'); input.value=''; return; }
+  showToast('Subiendo hoja de vida…');
+  bucketUpload('cvs', file, c.id, 'cv').then(function(r){
+    if(r.error){ showToast('No se pudo subir el PDF: ' + r.error.message); return; }
+    var old = c.cvPath;
+    c.cvPath = r.path; c.cvNombre = String(file.name||'Hoja de vida.pdf').slice(0,80);
+    saveDB(); render(); showToast('Hoja de vida adjuntada');
+    if(old && old !== r.path) sb.storage.from('cvs').remove([old]);
+  });
+}
+function removeCvFile(){
+  var c = currentCandidate(); if(!c) return;
+  if(c.cvPath && SUPABASE_READY) sb.storage.from('cvs').remove([c.cvPath]);
+  delete c.cvPath; delete c.cvNombre;
+  saveDB(); render(); showToast('Hoja de vida adjunta eliminada');
+}
+function openCvPath(path){
+  if(!SUPABASE_READY){ showToast('Requiere Supabase conectado.'); return; }
+  var w = window.open('', '_blank');
+  sb.storage.from('cvs').createSignedUrl(path, 300).then(function(r){
+    if(r.error || !r.data){ if(w) w.close(); showToast('No se pudo abrir el CV: ' + (r.error ? r.error.message : 'sin acceso')); return; }
+    if(w) w.location.href = r.data.signedUrl; else window.location.href = r.data.signedUrl;
+  });
+}
+function openCandidateCv(id){
+  var c = candidateById(id); if(!c) return;
+  if(c.cvPath) openCvPath(c.cvPath); else downloadCvPdf(c);
+}
+function downloadCvById(id){ var c = candidateById(id); if(c) downloadCvPdf(c); }
+
+/* ================= CV EN PDF ================= */
+function cvFileName(c){
+  var base = norm((c.nombre||'')+' '+(c.apellido||'')).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+  return 'CV-' + (base || 'hoja-de-vida') + '.pdf';
+}
+function downloadCvPdf(c){
+  if(!c) return;
+  if(!window.jspdf || !window.jspdf.jsPDF){ printCv(c); return; }
+  try{
+    var doc = new window.jspdf.jsPDF({unit:'mm', format:'a4'});
+    var M = 18, W = 210 - 2*M, y = M;
+    var clean = function(s){ return String(s==null?'':s).replace(/[\u2013\u2014]/g,'-').replace(/[\u2018\u2019]/g,"'").replace(/[\u201C\u201D]/g,'"').replace(/\u2026/g,'...'); };
+    var ensure = function(h){ if(y + h > 285){ doc.addPage(); y = M; } };
+    var para = function(t, size, style, color, gap){
+      doc.setFont('helvetica', style || 'normal'); doc.setFontSize(size);
+      doc.setTextColor(color[0], color[1], color[2]);
+      doc.splitTextToSize(clean(t), W).forEach(function(line){ ensure(size*0.5); doc.text(line, M, y); y += size*0.48; });
+      y += (gap || 0);
+    };
+    var heading = function(t){
+      ensure(16); y += 4;
+      doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(5,8,10);
+      doc.text(clean(t).toUpperCase(), M, y); y += 2;
+      doc.setDrawColor(120,160,0); doc.setLineWidth(0.7); doc.line(M, y, M+24, y); y += 5;
+    };
+    para((c.nombre||'')+' '+(c.apellido||''), 20, 'bold', [5,8,10], 1);
+    if(c.cargo && c.cargo!=='Sin especificar') para(c.cargo, 12, 'normal', [90,120,0], 1);
+    var contact = [c.ciudad && c.ciudad!=='Sin especificar' ? c.ciudad : '', c.email, c.telefono, c.linkedin, c.sitioWeb].filter(Boolean).join('  |  ');
+    if(contact) para(contact, 9, 'normal', [90,90,90], 2);
+    if(c.sobreMi && c.sobreMi.indexOf('Aún no has agregado')===-1){ heading('Perfil profesional'); para(c.sobreMi, 10, 'normal', [40,40,40], 1); }
+    if((c.experiencia||[]).length){ heading('Experiencia'); c.experiencia.forEach(function(e){
+      para((e.puesto||'')+(e.empresa?' - '+e.empresa:''), 10.5, 'bold', [20,20,20], 0);
+      if(e.periodo) para(e.periodo, 9, 'normal', [110,110,110], 0);
+      if(e.descripcion) para(e.descripcion, 10, 'normal', [40,40,40], 2); else y += 2;
+    }); }
+    if((c.educacion||[]).length){ heading('Educación'); c.educacion.forEach(function(e){
+      para(e.titulo||'', 10.5, 'bold', [20,20,20], 0);
+      para([e.institucion, e.periodo].filter(Boolean).join(' | '), 9.5, 'normal', [90,90,90], 2);
+    }); }
+    if((c.habilidades||[]).length){ heading('Habilidades'); para(c.habilidades.join('  -  '), 10, 'normal', [40,40,40], 1); }
+    if((c.idiomas||[]).length){ heading('Idiomas'); c.idiomas.forEach(function(i){ para((i.idioma||'')+(i.nivel?' ('+i.nivel+')':''), 10, 'normal', [40,40,40], 0); }); }
+    if((c.certificaciones||[]).length){ heading('Certificaciones'); c.certificaciones.forEach(function(x){ para((x.nombre||'')+[x.entidad, x.anio].filter(Boolean).map(function(v){return ' | '+v;}).join(''), 10, 'normal', [40,40,40], 0); }); }
+    if((c.portafolio||[]).length){ heading('Proyectos'); c.portafolio.forEach(function(x){ para((x.nombre||'')+(x.url?' - '+x.url:''), 10, 'normal', [40,40,40], 0); }); }
+    doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
+    doc.text('Generado con Job-In', M, 291);
+    doc.save(cvFileName(c));
+    showToast('CV descargado');
+  }catch(err){
+    console.error('Error generando el PDF:', err);
+    printCv(c);
+  }
+}
+function cvHtmlBody(c){
+  var h = '<h1 style="margin:0;">'+esc((c.nombre||'')+' '+(c.apellido||''))+'</h1>';
+  if(c.cargo && c.cargo!=='Sin especificar') h += '<div style="color:#5a7800;font-size:16px;margin-top:2px;">'+esc(c.cargo)+'</div>';
+  var contact = [c.ciudad && c.ciudad!=='Sin especificar' ? c.ciudad : '', c.email, c.telefono, c.linkedin, c.sitioWeb].filter(Boolean).map(esc).join(' &nbsp;|&nbsp; ');
+  if(contact) h += '<div style="color:#666;font-size:12px;margin-top:6px;">'+contact+'</div>';
+  if(c.sobreMi && c.sobreMi.indexOf('Aún no has agregado')===-1) h += '<h2>Perfil profesional</h2><p>'+esc(c.sobreMi)+'</p>';
+  if((c.experiencia||[]).length) h += '<h2>Experiencia</h2>'+c.experiencia.map(function(e){ return '<p><strong>'+esc(e.puesto||'')+'</strong>'+(e.empresa?' - '+esc(e.empresa):'')+'<br><span style="color:#777;font-size:12px;">'+esc(e.periodo||'')+'</span><br>'+esc(e.descripcion||'')+'</p>'; }).join('');
+  if((c.educacion||[]).length) h += '<h2>Educación</h2>'+c.educacion.map(function(e){ return '<p><strong>'+esc(e.titulo||'')+'</strong><br>'+esc([e.institucion,e.periodo].filter(Boolean).join(' | '))+'</p>'; }).join('');
+  if((c.habilidades||[]).length) h += '<h2>Habilidades</h2><p>'+c.habilidades.map(esc).join(' &middot; ')+'</p>';
+  if((c.idiomas||[]).length) h += '<h2>Idiomas</h2><p>'+c.idiomas.map(function(i){ return esc(i.idioma||'')+(i.nivel?' ('+esc(i.nivel)+')':''); }).join('<br>')+'</p>';
+  if((c.certificaciones||[]).length) h += '<h2>Certificaciones</h2><p>'+c.certificaciones.map(function(x){ return esc(x.nombre||'')+(x.entidad?' | '+esc(x.entidad):'')+(x.anio?' | '+esc(x.anio):''); }).join('<br>')+'</p>';
+  if((c.portafolio||[]).length) h += '<h2>Proyectos</h2><p>'+c.portafolio.map(function(x){ return esc(x.nombre||'')+(x.url?' - '+esc(x.url):''); }).join('<br>')+'</p>';
+  return h;
+}
+function printCv(c){
+  var w = window.open('', '_blank');
+  if(!w){ showToast('Permite las ventanas emergentes para descargar el CV.'); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(cvFileName(c))+'</title><style>body{font-family:Arial,sans-serif;margin:36px;color:#222;line-height:1.5}h2{font-size:13px;text-transform:uppercase;border-bottom:2px solid #78a000;padding-bottom:3px;margin-top:22px}p{margin:6px 0}</style></head><body>'+cvHtmlBody(c)+'</body></html>');
+  w.document.close(); w.focus();
+  setTimeout(function(){ w.print(); }, 300);
+}
+
+/* ================= PERFIL DEL CANDIDATO VISTO POR LA EMPRESA ================= */
+function viewCandidateProfile(id){
+  var cand = candidateById(id), comp = currentCompany();
+  if(!cand || cand.sistema) return '<div class="empty-state glass">'+icon('user',34)+'<strong>Este perfil no está disponible</strong>Solo puedes ver los perfiles de personas que se postularon a tus ofertas.<div style="margin-top:16px;"><button class="btn btn-primary" onclick="go(\'#/candidates\')">Volver a candidatos</button></div></div>';
+  var apps = db.applications.filter(function(a){ var j = jobById(a.jobId); return a.candidateId===id && j && (!comp || j.companyId===comp.id); });
+  var contactBtn = comp ? '<button class="btn btn-primary" onclick="openThreadWith(\''+cand.id+'\')">'+icon('message',15)+' Contactar</button>' : '';
+  var rows = function(items, fn){ return (items||[]).length ? items.map(fn).join('') : '<p class="muted" style="font-size:0.85rem;">Sin información.</p>'; };
+  return '<div class="section-head"><h2>Perfil del candidato</h2><button class="btn btn-ghost btn-sm" onclick="go(\'#/candidates\')">Volver a candidatos</button></div>'+
+  '<div class="profile-head glass">'+avatarHTML(cand,'lg')+
+    '<div style="flex:1;min-width:220px;"><h2>'+esc(cand.nombre)+' '+esc(cand.apellido||'')+'</h2>'+
+      '<div class="muted" style="margin-top:4px;">'+esc(cand.cargo||'')+' · '+esc(cand.ciudad||'')+'</div>'+
+      '<div class="muted" style="font-size:0.82rem;margin-top:6px;">'+esc(cand.email||'')+(cand.telefono?' · '+esc(cand.telefono):'')+'</div></div>'+
+    '<div class="row gap8" style="flex-wrap:wrap;">'+contactBtn+
+      '<button class="btn btn-ghost" onclick="downloadCvById(\''+cand.id+'\')">'+icon('download',15)+' Descargar CV</button>'+
+      (cand.cvPath ? '<button class="btn btn-ghost" onclick="openCvPath(\''+esc(cand.cvPath)+'\')">'+icon('doc',15)+' Ver PDF adjunto</button>' : '')+
+    '</div>'+
+  '</div>'+
+  (apps.length ? '<div class="glass" style="padding:22px;margin-top:16px;"><h4 style="margin-bottom:12px;">Postulaciones a tus ofertas</h4>'+apps.map(function(a){
+      var j = jobById(a.jobId), m = matchFor(j, cand);
+      return '<div class="exp-item"><div class="row between" style="flex-wrap:wrap;gap:8px;"><div><div class="t1">'+esc(j.title)+'</div><div class="t3">Postuló: '+esc(a.fecha||'')+'</div></div><div class="row gap12"><span class="pill">'+m.score+'% Match</span><span class="status-badge status-'+statusClass(a.estado)+'">'+esc(a.estado)+'</span></div></div>'+
+        (m.reasons.length ? '<div class="match-explain" style="margin-top:10px;">'+m.reasons.map(function(r){return '<div class="ok-line">'+icon('check',14)+' '+esc(r)+'</div>';}).join('')+'</div>' : '')+
+        (m.gaps.length ? '<div class="match-explain" style="margin-top:8px;">'+m.gaps.map(function(g){return '<div class="ok-line"><span style="color:var(--warn);margin-top:2px;">•</span> '+esc(g)+'</div>';}).join('')+'</div>' : '')+'</div>';
+    }).join('')+'</div>' : '')+
+  '<div class="grid2" style="align-items:start;margin-top:16px;">'+
+    '<div>'+
+      '<div class="profile-block glass"><h4>'+icon('user',17)+' Sobre mí</h4><p class="muted" style="font-size:0.89rem;">'+esc(cand.sobreMi||'Sin información.')+'</p></div>'+
+      '<div class="profile-block glass"><h4>'+icon('briefcase',17)+' Experiencia laboral</h4>'+rows(cand.experiencia,function(e){return '<div class="exp-item"><div class="t1">'+esc(e.puesto)+'</div><div class="t2">'+esc(e.empresa)+'</div><div class="t3">'+esc(e.periodo)+'</div><p class="muted" style="font-size:0.85rem;margin-top:6px;">'+esc(e.descripcion||'')+'</p></div>';})+'</div>'+
+      '<div class="profile-block glass"><h4>'+icon('doc',17)+' Educación</h4>'+rows(cand.educacion,function(e){return '<div class="exp-item"><div class="t1">'+esc(e.titulo)+'</div><div class="t2">'+esc(e.institucion)+'</div><div class="t3">'+esc(e.periodo)+'</div></div>';})+'</div>'+
+    '</div>'+
+    '<div>'+
+      '<div class="profile-block glass"><h4>'+icon('star',17)+' Habilidades</h4>'+((cand.habilidades||[]).length ? cand.habilidades.map(function(h){return '<span class="skill-chip">'+esc(h)+'</span>';}).join('') : '<p class="muted" style="font-size:0.85rem;">Sin información.</p>')+'</div>'+
+      '<div class="profile-block glass"><h4>'+icon('globe',17)+' Idiomas</h4>'+rows(cand.idiomas,function(i){return '<div class="exp-item" style="padding:8px 0;"><div class="row between"><span>'+esc(i.idioma)+'</span><span class="muted" style="font-size:0.82rem;">'+esc(i.nivel)+'</span></div></div>';})+'</div>'+
+      '<div class="profile-block glass"><h4>'+icon('checkCircle',17)+' Certificaciones</h4>'+rows(cand.certificaciones,function(x){return '<div class="exp-item"><div class="t1">'+esc(x.nombre)+'</div><div class="t3">'+esc(x.entidad||'')+' · '+esc(x.anio||'')+'</div></div>';})+'</div>'+
+      '<div class="profile-block glass"><h4>'+icon('share',17)+' Enlaces</h4>'+profileLinksHTML(cand)+'</div>'+
+    '</div>'+
+  '</div>';
+}
+
+/* ================= CONVERSACIONES ENTRE EMPRESA Y CANDIDATO ================= */
+function openThreadWith(otherId){
+  if(!db.session){ go('#/login'); return; }
+  var role = db.session.role;
+  var companyId = role==='company' ? db.session.id : otherId;
+  var candidateId = role==='company' ? otherId : db.session.id;
+  var t = db.threads.find(function(x){ return x.companyId===companyId && x.candidateId===candidateId; });
+  if(!t){
+    t = {id:genId('t'), companyId:companyId, candidateId:candidateId, messages:[]};
+    db.threads.push(t);
+    saveDB();
+  }
+  openThreadId = t.id;
+  go('#/messages/'+t.id);
+}
+
+/* ================= VISITAS A OFERTAS Y ESTADÍSTICAS REALES ================= */
+var companyViews = {rows:[], loadedAt:0, loading:false};
+function trackJobView(job){
+  if(!SUPABASE_READY) return;
+  if((db.session && db.session.id===job.companyId) || db.isAdmin) return;
+  var k = 'jv_' + job.id;
+  try{ if(window.sessionStorage.getItem(k)) return; window.sessionStorage.setItem(k,'1'); }catch(e){}
+  sb.from('job_views').insert({job_id:job.id, viewer:(db.session && db.session.id) || null}).then(function(){});
+}
+function loadCompanyViews(){
+  if(!SUPABASE_READY || !db.session || companyViews.loading) return;
+  var ids = db.jobs.filter(function(j){ return j.companyId===db.session.id; }).map(function(j){ return j.id; });
+  if(!ids.length){ companyViews.loadedAt = Date.now(); return; }
+  companyViews.loading = true;
+  sb.from('job_views').select('job_id,created_at').in('job_id', ids).then(function(r){
+    companyViews.loading = false; companyViews.loadedAt = Date.now();
+    if(r.error) return;
+    companyViews.rows = r.data || [];
+    if(currentRoute()[0]==='company-stats') render();
+  });
+}
+function viewCompanyStats(){
+  var comp = currentCompany();
+  var ids = db.jobs.filter(function(j){return j.companyId===comp.id;}).map(function(j){return j.id;});
+  var apps = db.applications.filter(function(a){return ids.indexOf(a.jobId)!==-1;});
+  var byStage = {};
+  pipelineStages.forEach(function(s){ byStage[s[0]] = apps.filter(function(a){return a.etapa===s[0];}).length; });
+  var maxV = Math.max.apply(null, Object.keys(byStage).map(function(k){return byStage[k];}).concat([1]));
+  var views = companyViews.rows.filter(function(r){ return ids.indexOf(r.job_id)!==-1; });
+  var labels = [], counts = [];
+  for(var i=6;i>=0;i--){
+    var d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-i);
+    var start = d.getTime(), end = start + 86400000;
+    labels.push(d.toLocaleDateString('es-CO',{weekday:'short'}));
+    counts.push(views.filter(function(r){ var t = new Date(r.created_at).getTime(); return t>=start && t<end; }).length);
+  }
+  var maxViews = Math.max.apply(null, counts.concat([1]));
+  var hired = apps.filter(function(a){return a.etapa==='contratado';});
+  var conv = apps.length ? Math.round(100*hired.length/apps.length) : 0;
+  var spans = hired.filter(function(a){return a.contratadoAt && a.createdAt;}).map(function(a){ return (new Date(a.contratadoAt)-new Date(a.createdAt))/86400000; });
+  var avg = spans.length ? (Math.round(10*spans.reduce(function(s,x){return s+x;},0)/spans.length)/10) : null;
+  var src = {}; apps.forEach(function(a){ var k = a.fuente || 'Directo'; src[k] = (src[k]||0)+1; });
+  var srcRows = Object.keys(src).map(function(k){ return [k, Math.round(100*src[k]/apps.length)]; }).sort(function(a,b){return b[1]-a[1];});
+  var viewsTxt = SUPABASE_READY ? String(views.length) : '—';
+  var rate = (SUPABASE_READY && views.length) ? Math.round(100*apps.length/views.length)+'%' : '—';
+  var emptyNote = '<p class="muted" style="font-size:0.85rem;margin-top:14px;">Aún no hay datos para mostrar.</p>';
+  return '<div class="section-head"><h2>Estadísticas</h2></div>'+
+  '<div class="grid4">'+
+    '<div class="kpi-card glass"><div class="num">'+viewsTxt+'</div><div class="lbl">Visualizaciones de tus ofertas</div></div>'+
+    '<div class="kpi-card glass"><div class="num">'+apps.length+'</div><div class="lbl">Postulaciones</div><div class="delta">'+rate+' de quienes ven una oferta se postulan</div></div>'+
+    '<div class="kpi-card glass"><div class="num">'+conv+'%</div><div class="lbl">Tasa de conversión</div><div class="delta">'+hired.length+' contratados de '+apps.length+' postulaciones</div></div>'+
+    '<div class="kpi-card glass"><div class="num">'+(avg===null?'—':avg+' días')+'</div><div class="lbl">Tiempo promedio de contratación</div></div>'+
+  '</div>'+
+  '<div class="grid2" style="margin-top:20px;align-items:start;">'+
+    '<div class="glass" style="padding:22px;"><h4>Candidatos por etapa</h4>'+(apps.length ? '<div class="bars">'+pipelineStages.map(function(s){
+      var v = byStage[s[0]]; var h = Math.max(6, Math.round((v/maxV)*140));
+      return '<div class="bar-col"><div class="bar-fill" style="height:'+h+'px;"></div><div class="bar-lbl">'+v+'<br>'+s[1].split(' ')[0]+'</div></div>';
+    }).join('')+'</div>' : emptyNote)+'</div>'+
+    '<div class="glass" style="padding:22px;"><h4>De dónde llegan los candidatos</h4>'+(srcRows.length ? '<div class="hbars" style="margin-top:14px;">'+srcRows.map(function(s){
+      return '<div class="hbar-row"><span class="muted">'+esc(s[0])+'</span><div class="hbar-track"><div class="hbar-fill" style="width:'+s[1]+'%;"></div></div><span>'+s[1]+'%</span></div>';
+    }).join('')+'</div>' : emptyNote)+'</div>'+
+  '</div>'+
+  '<div class="glass" style="padding:22px;margin-top:16px;"><h4>Visualizaciones de tus ofertas (últimos 7 días)</h4>'+(SUPABASE_READY ? '<div class="bars" style="height:130px;">'+counts.map(function(v,i){
+    var h = Math.max(6, Math.round((v/maxViews)*100));
+    return '<div class="bar-col"><div class="bar-fill" style="height:'+h+'px;"></div><div class="bar-lbl">'+v+'<br>'+esc(labels[i])+'</div></div>';
+  }).join('')+'</div>' : '<p class="muted" style="font-size:0.85rem;margin-top:14px;">Las visualizaciones se registran cuando la plataforma está conectada a Supabase.</p>')+'</div>';
 }
 
 /* ================= COMPANY: PIPELINE (KANBAN) ================= */
@@ -2386,7 +2828,7 @@ function viewPipeline(){
       items.map(function(a){
         var cand = candidateById(a.candidateId); var job = jobById(a.jobId);
         var idx = pipelineStages.findIndex(function(s){return s[0]===st[0];});
-        return '<div class="kb-card glass"><div class="name">'+esc(cand.nombre)+' '+esc(cand.apellido||'')+'</div><div class="role">'+esc(job.title)+'</div>'+
+        return '<div class="kb-card glass"><div class="name" style="cursor:pointer;" onclick="go(\'#/candidate/'+cand.id+'\')">'+esc(cand.nombre)+' '+esc(cand.apellido||'')+'</div><div class="role">'+esc(job.title)+'</div>'+
           '<div class="move-row">'+
             (idx>0?'<button onclick="moveStage(\''+a.id+'\',-1)">◀</button>':'')+
             (idx<pipelineStages.length-1?'<button onclick="moveStage(\''+a.id+'\',1)">▶</button>':'')+
@@ -2463,38 +2905,6 @@ function viewCompanyProfile(){
 }
 
 /* ================= COMPANY STATS ================= */
-function viewCompanyStats(){
-  var comp = currentCompany();
-  var myJobIds = db.jobs.filter(function(j){return j.companyId===comp.id;}).map(function(j){return j.id;});
-  var apps = db.applications.filter(function(a){return myJobIds.indexOf(a.jobId)!==-1;});
-  var byStage = {};
-  pipelineStages.forEach(function(s){ byStage[s[0]] = apps.filter(function(a){return a.etapa===s[0];}).length; });
-  var maxV = Math.max.apply(null, Object.values(byStage).concat([1]));
-  var views = [120,98,140,76,110,64];
-  var maxViews = Math.max.apply(null,views);
-  return '<div class="section-head"><h2>Estadísticas</h2></div>'+
-  '<div class="grid4">'+
-    '<div class="kpi-card glass"><div class="num">'+views.reduce(function(a,b){return a+b;},0)+'</div><div class="lbl">Visualizaciones de oferta</div><div class="delta">↑ 12% esta semana</div></div>'+
-    '<div class="kpi-card glass"><div class="num">'+apps.length+'</div><div class="lbl">Postulaciones</div><div class="delta">↑ 8% esta semana</div></div>'+
-    '<div class="kpi-card glass"><div class="num">'+(apps.length? Math.round(100*(byStage.contratado||0)/apps.length):0)+'%</div><div class="lbl">Tasa de conversión</div></div>'+
-    '<div class="kpi-card glass"><div class="num">12 días</div><div class="lbl">Tiempo promedio de contratación</div></div>'+
-  '</div>'+
-  '<div class="grid2" style="margin-top:20px;align-items:start;">'+
-    '<div class="glass" style="padding:22px;"><h4>Candidatos por etapa</h4><div class="bars">'+pipelineStages.map(function(s){
-      var v = byStage[s[0]]; var h = Math.max(6, Math.round((v/maxV)*140));
-      return '<div class="bar-col"><div class="bar-fill" style="height:'+h+'px;"></div><div class="bar-lbl">'+s[1].split(' ')[0]+'</div></div>';
-    }).join('')+'</div></div>'+
-    '<div class="glass" style="padding:22px;"><h4>Fuentes de candidatos</h4><div class="hbars" style="margin-top:14px;">'+
-      [['Búsqueda en Job-In',62],['Recomendaciones',21],['Referidos',11],['Otros',6]].map(function(s){
-        return '<div class="hbar-row"><span class="muted">'+s[0]+'</span><div class="hbar-track"><div class="hbar-fill" style="width:'+s[1]+'%;"></div></div><span>'+s[1]+'%</span></div>';
-      }).join('')+'</div></div>'+
-  '</div>'+
-  '<div class="glass" style="padding:22px;margin-top:16px;"><h4>Visualizaciones de la oferta (últimos 6 días)</h4><div class="bars" style="height:120px;">'+views.map(function(v,i){
-    var h = Math.max(6, Math.round((v/maxViews)*100));
-    return '<div class="bar-col"><div class="bar-fill" style="height:'+h+'px;"></div><div class="bar-lbl">Día '+(i+1)+'</div></div>';
-  }).join('')+'</div></div>';
-}
-
 /* ================= ADMIN ================= */
 /* ---------------- ADMIN: acceso real (tabla `admins` en Supabase, sin contraseña en el código) ---------------- */
 function viewAdminGate(){
