@@ -16,6 +16,7 @@
 <meta name="twitter:description" content="Busca empleo, revisa tu compatibilidad con Job-In Match y postúlate en minutos.">
 <meta name="twitter:image" content="https://yannikc14.github.io/job-in/og-image.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%92%BC%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://yhnakntkwuqwdhdubdrn.supabase.co" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -259,6 +260,7 @@ header.app-top{ position:sticky; top:0; z-index:60; background:rgba(5,8,10,0.9);
 /* ---------- applications timeline ---------- */
 .app-card{ padding:18px 20px; margin-bottom:10px; }
 .status-badge{ font-size:0.74rem; font-weight:700; padding:4px 11px; border-radius:999px; }
+.status-retirada{ background:rgba(169,178,184,0.12); color:var(--gray-dim); }
 .status-enviada, .status-nuevas{ background:rgba(169,178,184,0.15); color:var(--gray); }
 .status-en-revision{ background:rgba(255,200,87,0.15); color:var(--warn); }
 .status-vista, .status-preseleccionado{ background:rgba(120,180,255,0.15); color:#78B4FF; }
@@ -515,6 +517,7 @@ function icon(name, size){
     target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
     layers:'<polygon points="12,3 21,8 12,13 3,8"/><polyline points="3,14 12,19 21,14"/>',
     save:'<path d="M5 4h11l3 3v13H5z"/><rect x="8" y="4" width="7" height="5"/><rect x="8" y="13" width="8" height="6"/>',
+    flag:'<path d="M5 21V4"/><path d="M5 4h12l-2 4 2 4H5"/>',
     share:'<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.6" y1="10.6" x2="15.4" y2="6.4"/><line x1="8.6" y1="13.4" x2="15.4" y2="17.6"/>'
   }[name] || '<circle cx="12" cy="12" r="9"/>';
   return '<svg class="icon" width="'+size+'" height="'+size+'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'+p+'</svg>';
@@ -681,7 +684,7 @@ function loadDB(cb){
     try{
       var s = await sb.auth.getSession();
       loadedForUid = (s && s.data && s.data.session && s.data.session.user) ? s.data.session.user.id : null;
-      await refreshData();
+      await refreshData('all', loadedForUid);
     }catch(err){ console.error(err); remoteError = (err && err.message) || 'error desconocido'; }
     cb && cb();
   })();
@@ -705,14 +708,20 @@ function resetDB(){
 
 /* ---------- Modo Supabase: tablas reales + sincronización por fila ---------- */
 function stripKeys(o, keys){ var d = Object.assign({}, o); keys.forEach(function(k){ delete d[k]; }); return d; }
+function candRow(o){ return {id:o.id, data:stripKeys(o,['id'])}; }
+function compRow(o){ return {id:o.id, data:stripKeys(o,['id'])}; }
+function jobRow(o){ return {id:o.id, company_id:o.companyId, data:stripKeys(o,['id','createdAt'])}; }
+function appRow(o){ var j = jobById(o.jobId); return {id:o.id, job_id:o.jobId, candidate_id:o.candidateId, company_id:(o.companyId || (j?j.companyId:null)), data:stripKeys(o,['id','createdAt','companyId'])}; }
+function threadRow(t){ return {id:t.id, company_id:t.companyId, candidate_id:t.candidateId}; }
+function notifRow(n){ return {id:n.id, user_id:n.userId, data:{text:n.text, leida:!!n.leida}}; }
 var SYNC_DEFS = {
-  candidates:   { rows:function(){ return db.candidates.map(function(o){ return {id:o.id, data:stripKeys(o,['id'])}; }); } },
-  companies:    { rows:function(){ return db.companies.map(function(o){ return {id:o.id, data:stripKeys(o,['id'])}; }); } },
-  jobs:         { rows:function(){ return db.jobs.map(function(o){ return {id:o.id, company_id:o.companyId, data:stripKeys(o,['id','createdAt'])}; }); } },
-  applications: { rows:function(){ return db.applications.map(function(o){ var j=jobById(o.jobId); return {id:o.id, job_id:o.jobId, candidate_id:o.candidateId, company_id:j?j.companyId:null, data:stripKeys(o,['id','createdAt'])}; }); } },
-  threads:      { rows:function(){ return db.threads.map(function(t){ return {id:t.id, company_id:t.companyId, candidate_id:t.candidateId}; }); } },
+  candidates:   { rows:function(){ return db.candidates.map(candRow); } },
+  companies:    { rows:function(){ return db.companies.map(compRow); } },
+  jobs:         { rows:function(){ return db.jobs.map(jobRow); } },
+  applications: { rows:function(){ return db.applications.map(appRow); } },
+  threads:      { rows:function(){ return db.threads.map(threadRow); } },
   messages:     { insertOnly:true, rows:function(){ var out=[]; db.threads.forEach(function(t){ (t.messages||[]).forEach(function(m){ if(!m.id) m.id=genId('m'); out.push({id:m.id, thread_id:t.id, sender_role:m.from, body:m.text}); }); }); return out; } },
-  notifications:{ rows:function(){ return db.notifications.map(function(n){ return {id:n.id, user_id:n.userId, data:{text:n.text, leida:!!n.leida}}; }); } }
+  notifications:{ rows:function(){ return db.notifications.map(notifRow); } }
 };
 var SYNC_ORDER = ['candidates','companies','jobs','applications','threads','messages','notifications'];
 
@@ -793,28 +802,143 @@ async function doSync(){
   }catch(err2){ if(!firstError) firstError = err2; }
   if(firstError) throw firstError;
 }
-async function refreshData(){
-  var tbl = function(t, orderCol, asc){ var b = sb.from(t).select('*'); if(orderCol) b = b.order(orderCol, {ascending: !!asc}); return b; };
-  var res = await Promise.all([
-    tbl('candidates'), tbl('companies'), tbl('jobs','created_at',false), tbl('applications','created_at',false),
-    tbl('threads'), tbl('messages','created_at',true), tbl('notifications','created_at',false), tbl('saved_jobs')
-  ]);
+var JOBS_PAGE = 200;
+function rowToObj(r){ return Object.assign({id:r.id}, r.data); }
+function rowToJob(r){ return Object.assign({id:r.id}, r.data, {companyId:r.company_id, createdAt:r.created_at}); }
+function rowToApp(r){ return Object.assign({id:r.id}, r.data, {jobId:r.job_id, candidateId:r.candidate_id, companyId:r.company_id, createdAt:r.created_at}); }
+function newestFirst(a,b){ return String(b.createdAt||'').localeCompare(String(a.createdAt||'')) || String(b.id).localeCompare(String(a.id)); }
+async function fetchByIds(table, ids){
+  ids = Array.from(new Set((ids||[]).filter(Boolean)));
+  var out = [];
+  for(var i=0;i<ids.length;i+=80){
+    var r = await sb.from(table).select('*').in('id', ids.slice(i,i+80));
+    if(r.error) throw new Error(r.error.message);
+    out = out.concat(r.data || []);
+  }
+  return out;
+}
+/* scope 'all' = todo lo necesario; 'mine' = solo lo personal (postulaciones, chats, avisos) */
+async function refreshData(scope, uidOverride){
+  scope = scope || 'all';
+  var uid = uidOverride || (db.session ? db.session.id : null), admin = !!db.isAdmin, needJobs = (scope==='all');
+  var tbl = function(t, col, asc, limit){ var b = sb.from(t).select('*'); if(col) b = b.order(col,{ascending:!!asc}); if(limit) b = b.limit(limit); return b; };
+  var threadsQ = tbl('threads');
+  if(admin && uid) threadsQ = threadsQ.or('company_id.eq.'+uid+',candidate_id.eq.'+uid);
+  var calls = [ tbl('candidates', null, false, admin ? 1000 : 0), tbl('applications','created_at',false,1000), threadsQ, tbl('notifications','created_at',false,200), tbl('saved_jobs') ];
+  if(needJobs){
+    calls.push(tbl('jobs','created_at',false, admin ? 1000 : JOBS_PAGE));
+    calls.push(uid ? sb.from('jobs').select('*').eq('company_id', uid) : Promise.resolve({data:[], error:null}));
+    if(admin) calls.push(tbl('companies', null, false, 1000));
+  }
+  if(!admin) calls.push(tbl('messages','created_at',false,600));
+  var res = await Promise.all(calls);
   var bad = res.filter(function(r){ return r.error; })[0];
   if(bad){ remoteError = bad.error.message || 'error desconocido'; return false; }
+  var k = 0, rCand = res[k++], rApps = res[k++], rThreads = res[k++], rNotif = res[k++], rSaved = res[k++];
+  var rJobs = null, rMine = null, rAllComp = null, rMsgs = null;
+  if(needJobs){ rJobs = res[k++]; rMine = res[k++]; if(admin) rAllComp = res[k++]; }
+  if(!admin) rMsgs = res[k++];
+
+  var msgRows = [];
+  if(admin){
+    var tids = (rThreads.data||[]).map(function(t){ return t.id; });
+    for(var i=0;i<tids.length;i+=50){
+      var mr = await sb.from('messages').select('*').in('thread_id', tids.slice(i,i+50)).order('created_at',{ascending:true});
+      if(mr.error){ remoteError = mr.error.message; return false; }
+      msgRows = msgRows.concat(mr.data||[]);
+    }
+  } else msgRows = (rMsgs.data||[]).slice().reverse();
+
   remoteError = '';
   var n = emptyRemoteDB(); n.session = db.session; n.isAdmin = db.isAdmin;
-  n.candidates = res[0].data.map(function(r){ return Object.assign({id:r.id}, r.data); });
-  n.companies  = res[1].data.map(function(r){ return Object.assign({id:r.id}, r.data); });
-  n.jobs = res[2].data.map(function(r){ return Object.assign({id:r.id}, r.data, {companyId:r.company_id, createdAt:r.created_at}); });
-  n.applications = res[3].data.map(function(r){ return Object.assign({id:r.id}, r.data, {jobId:r.job_id, candidateId:r.candidate_id, createdAt:r.created_at}); });
+  n.candidates = (rCand.data||[]).map(rowToObj);
+  n.applications = (rApps.data||[]).map(rowToApp);
   var tmap = {};
-  n.threads = res[4].data.map(function(r){ var t = {id:r.id, companyId:r.company_id, candidateId:r.candidate_id, messages:[]}; tmap[r.id] = t; return t; });
-  res[5].data.forEach(function(m){ var t = tmap[m.thread_id]; if(t) t.messages.push({id:m.id, from:m.sender_role, text:m.body, fecha:fmtDate(m.created_at)}); });
-  n.notifications = res[6].data.map(function(r){ var d = r.data || {}; return {id:r.id, userId:r.user_id, text:d.text||'', leida:!!d.leida, fecha:fmtDate(r.created_at)}; });
-  res[7].data.forEach(function(r){ (n.savedJobs[r.candidate_id] = n.savedJobs[r.candidate_id] || []).push(r.job_id); });
+  n.threads = (rThreads.data||[]).map(function(r){ var t = {id:r.id, companyId:r.company_id, candidateId:r.candidate_id, messages:[]}; tmap[r.id] = t; return t; });
+  msgRows.forEach(function(m){ var t = tmap[m.thread_id]; if(t) t.messages.push({id:m.id, from:m.sender_role, text:m.body, fecha:fmtDate(m.created_at)}); });
+  n.notifications = (rNotif.data||[]).map(function(r){ var d = r.data || {}; return {id:r.id, userId:r.user_id, text:d.text||'', leida:!!d.leida, fecha:fmtDate(r.created_at)}; });
+  (rSaved.data||[]).forEach(function(r){ (n.savedJobs[r.candidate_id] = n.savedJobs[r.candidate_id] || []).push(r.job_id); });
+
+  if(needJobs){
+    var seen = {}; n.jobs = [];
+    ((rMine.data||[]).concat(rJobs.data||[])).forEach(function(r){ if(seen[r.id]) return; seen[r.id] = 1; n.jobs.push(rowToJob(r)); });
+  } else n.jobs = db.jobs.slice();
+  var have = {}; n.jobs.forEach(function(j){ have[j.id] = 1; });
+  var missing = n.applications.map(function(a){ return a.jobId; }).concat((rSaved.data||[]).map(function(s){ return s.job_id; })).filter(function(id){ return !have[id]; });
+  if(missing.length){
+    (await fetchByIds('jobs', missing)).forEach(function(r){ if(!have[r.id]){ have[r.id] = 1; n.jobs.push(rowToJob(r)); } });
+  }
+  n.jobs.sort(newestFirst);
+
+  if(needJobs && admin && rAllComp) n.companies = (rAllComp.data||[]).map(rowToObj);
+  else {
+    n.companies = needJobs ? [] : db.companies.slice();
+    var haveC = {}; n.companies.forEach(function(c2){ haveC[c2.id] = 1; });
+    var cids = n.jobs.map(function(j){ return j.companyId; }).concat(n.threads.map(function(t){ return t.companyId; }), uid ? [uid] : [], ['jobin-support-co']);
+    var missC = Array.from(new Set(cids)).filter(function(id){ return id && !haveC[id]; });
+    if(missC.length) (await fetchByIds('companies', missC)).forEach(function(r){ if(!haveC[r.id]){ haveC[r.id] = 1; n.companies.push(rowToObj(r)); } });
+  }
   db = n;
   syncSnap = buildSnapshot();
+  jobFetchTried = {};
   return true;
+}
+/* agrega filas traídas después (búsquedas, enlaces directos) sin que se intenten volver a guardar */
+function ingestRows(table, rows){
+  var added = 0;
+  (rows||[]).forEach(function(r){
+    if(table==='jobs'){
+      if(db.jobs.some(function(j){ return j.id===r.id; })) return;
+      var o = rowToJob(r); db.jobs.push(o); syncSnap.jobs[o.id] = JSON.stringify(jobRow(o)); added++;
+    } else if(table==='companies'){
+      if(db.companies.some(function(x){ return x.id===r.id; })) return;
+      var c2 = rowToObj(r); db.companies.push(c2); syncSnap.companies[c2.id] = JSON.stringify(compRow(c2)); added++;
+    }
+  });
+  if(table==='jobs') db.jobs.sort(newestFirst);
+  return added;
+}
+var jobFetchTried = {};
+async function fetchJobById(id){
+  try{
+    var rows = await fetchByIds('jobs', [id]);
+    if(rows.length){
+      var need = rows.map(function(r){ return r.company_id; }).filter(function(cid){ return !db.companies.some(function(x){ return x.id===cid; }); });
+      if(need.length) ingestRows('companies', await fetchByIds('companies', need));
+      ingestRows('jobs', rows);
+    }
+  }catch(e){ console.error(e); }
+  render();
+}
+var remoteSearchTimer = null, remoteSearchKey = '';
+function scheduleRemoteJobSearch(){
+  if(!SUPABASE_READY || db.jobs.length < JOBS_PAGE) return;     /* si ya está todo cargado, no hace falta */
+  clearTimeout(remoteSearchTimer);
+  remoteSearchTimer = setTimeout(remoteJobSearch, 600);
+}
+async function remoteJobSearch(){
+  var clean = function(s){ return String(s||'').replace(/[^\p{L}\p{N} ]/gu,'').trim(); };
+  var q = clean((byId('jq')||{}).value), loc = clean((byId('jloc')||{}).value), cat = String((byId('jcat')||{}).value||'');
+  if(!q && !loc && !cat) return;
+  var key = q+'|'+loc+'|'+cat; if(key===remoteSearchKey) return; remoteSearchKey = key;
+  try{
+    var b = sb.from('jobs').select('*').order('created_at',{ascending:false}).limit(200);
+    if(q) b = b.ilike('data->>title', '%'+q+'%');
+    if(loc) b = b.ilike('data->>ubicacion', '%'+loc+'%');
+    if(cat) b = b.eq('data->>area', cat);
+    var r = await b;
+    if(r.error || !r.data) return;
+    var need = r.data.map(function(x){ return x.company_id; }).filter(function(cid){ return !db.companies.some(function(x){ return x.id===cid; }); });
+    if(need.length) ingestRows('companies', await fetchByIds('companies', need));
+    if(ingestRows('jobs', r.data) && currentRoute()[0] && ['jobs','candidate-search'].indexOf(currentRoute()[0])!==-1 && byId('jobResultsGrid')) renderJobResults();
+  }catch(e){ console.error(e); }
+}
+var publicStats = null;
+async function loadPublicStats(){
+  try{
+    var r = await sb.rpc('public_stats');
+    if(!r.error && r.data){ publicStats = r.data; if((currentRoute()[0]||'')==='') softRender(); }
+  }catch(e){}
 }
 async function checkAdminFlag(uid){
   try{
@@ -822,20 +946,101 @@ async function checkAdminFlag(uid){
     db.isAdmin = !!(r && r.data);
   }catch(e){ db.isAdmin = false; }
 }
+var pollTick = 0;
 function startPolling(){
   setInterval(async function(){
     if(!SUPABASE_READY || !db.session || document.hidden || syncing || syncTimer) return;
     var ae = document.activeElement;
-    if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.value) return;
+    if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.value && ae.id!=='chatInput') return;
+    pollTick++;
     var ok = false;
-    try{ ok = await refreshData(); }catch(e){}
+    try{ ok = await refreshData(pollTick % 5 === 0 ? 'all' : 'mine'); }catch(e){}
     if(!ok) return;
     var seg = currentRoute()[0] || '';
-    if(['messages','notifications','applications','candidates','pipeline','dashboard','company','my-jobs'].indexOf(seg) !== -1){
-      var y = window.scrollY; render(); window.scrollTo(0, y);
-    }
-  }, 25000);
+    if(['messages','notifications','applications','candidates','pipeline','dashboard','company','my-jobs'].indexOf(seg) !== -1) softRender();
+  }, 60000);
 }
+/* vuelve a pintar sin molestar: conserva el scroll y lo que estás escribiendo en el chat */
+function softRender(){
+  var ae = document.activeElement;
+  if(ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.id!=='chatInput' && ae.value) return;
+  var chat = document.getElementById('chatInput');
+  var chatVal = chat ? chat.value : '', hadFocus = !!(ae && ae.id==='chatInput');
+  var y = window.scrollY;
+  render();
+  window.scrollTo(0, y);
+  if(chatVal){ var c2 = document.getElementById('chatInput'); if(c2){ c2.value = chatVal; if(hadFocus) c2.focus(); } }
+}
+/* ---------------- Chat y avisos en tiempo real (Supabase Realtime) ---------------- */
+var rtChannel = null, rtUid = null;
+function subscribeRealtime(uid){
+  if(!SUPABASE_READY || !sb.channel) return;
+  if(rtUid===uid && rtChannel) return;
+  unsubscribeRealtime();
+  try{
+    rtUid = uid;
+    rtChannel = sb.channel('jobin-'+uid)
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'messages'}, function(p){ onRealtimeMessage(p.new); })
+      .on('postgres_changes', {event:'INSERT', schema:'public', table:'notifications', filter:'user_id=eq.'+uid}, function(p){ onRealtimeNotification(p.new); })
+      .subscribe();
+  }catch(e){ console.error('Realtime:', e); rtChannel = null; rtUid = null; }
+}
+function unsubscribeRealtime(){
+  try{ if(rtChannel && sb && sb.removeChannel) sb.removeChannel(rtChannel); }catch(e){}
+  rtChannel = null; rtUid = null;
+}
+function onRealtimeMessage(row){
+  if(!row || !db.session || row.sender_id==='system') return;
+  var t = db.threads.find(function(x){ return x.id===row.thread_id; });
+  if(!t){ refreshData('mine').then(function(){ softRender(); }); return; }   /* alguien te escribió por primera vez */
+  if(t.messages.some(function(m){ return m.id===row.id; })) return;          /* ya lo tenías (lo enviaste tú) */
+  t.messages.push({id:row.id, from:row.sender_role, text:row.body, fecha:fmtDate(row.created_at)});
+  if(syncSnap.messages) syncSnap.messages[row.id] = '1';
+  if((currentRoute()[0]||'')==='messages') softRender();
+}
+function onRealtimeNotification(row){
+  if(!row || !db.session || row.user_id!==db.session.id) return;
+  if(db.notifications.some(function(n){ return n.id===row.id; })) return;
+  var d = row.data || {};
+  var n = {id:row.id, userId:row.user_id, text:d.text||'', leida:!!d.leida, fecha:fmtDate(row.created_at)};
+  db.notifications.unshift(n);
+  if(syncSnap.notifications) syncSnap.notifications[n.id] = JSON.stringify(notifRow(n));
+  showToast(n.text || 'Tienes una notificación nueva');
+  if(['messages','notifications','dashboard','company','applications','candidates','pipeline','my-jobs'].indexOf(currentRoute()[0]||'') !== -1) softRender();
+}
+
+/* ---------------- CAPTCHA anti-bots (Cloudflare Turnstile) ----------------
+   Para activarlo: crea un widget gratis en https://dash.cloudflare.com (Turnstile), pega abajo la
+   "Site key" y pon la "Secret key" en Supabase > Authentication > Attack Protection.
+   Si TURNSTILE_SITE_KEY queda vacío, no se usa. */
+var TURNSTILE_SITE_KEY = '';
+var captchaToken = '';
+function captchaEnabled(){ return !!TURNSTILE_SITE_KEY && SUPABASE_READY; }
+function captchaBoxHTML(){ return captchaEnabled() ? '<div id="cf-box" style="margin:16px 0 6px;min-height:66px;"></div>' : ''; }
+function ensureTurnstile(cb){
+  if(window.turnstile){ cb(); return; }
+  if(!document.getElementById('cf-ts')){
+    var s = document.createElement('script'); s.id = 'cf-ts'; s.async = true;
+    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    s.onload = function(){ cb(); };
+    document.head.appendChild(s);
+  } else setTimeout(function(){ ensureTurnstile(cb); }, 300);
+}
+function renderCaptcha(){
+  if(!captchaEnabled()) return;
+  var seg = currentRoute()[0];
+  if(seg!=='login' && seg!=='register') return;
+  captchaToken = '';
+  ensureTurnstile(function(){
+    if(!document.getElementById('cf-box') || !window.turnstile) return;
+    try{
+      window.turnstile.render('#cf-box', { sitekey:TURNSTILE_SITE_KEY, theme:'dark',
+        callback:function(t){ captchaToken = t; }, 'expired-callback':function(){ captchaToken = ''; }, 'error-callback':function(){ captchaToken = ''; } });
+    }catch(e){ console.error('Turnstile:', e); }
+  });
+}
+function resetCaptcha(){ captchaToken = ''; try{ if(window.turnstile) window.turnstile.reset(); }catch(e){} }
+
 function notify(userId, text){
   if(!userId || String(userId).indexOf('jobin-support') === 0) return;
   var dup = db.notifications.some(function(n){ return n.userId===userId && !n.leida && n.text===text; });
@@ -993,9 +1198,10 @@ function populateCityDatalist(){
   dl.innerHTML = COLOMBIA_CITIES.map(function(c){ return '<option value="'+esc(c)+'">'; }).join('');
 }
 function money(n){ return '$' + Number(n).toLocaleString('es-CO'); }
-function companyOf(job){ return db.companies.find(function(c){return c.id===job.companyId;}); }
+function companyOf(job){ return db.companies.find(function(c){return c.id===job.companyId;}) || {id:job.companyId, nombre:'Empresa', sector:'', ciudad:'', verificada:false, descripcion:''}; }
 function jobById(id){ return db.jobs.find(function(j){return j.id===id;}); }
-function jobIsActive(j){ return !j.estado || j.estado==='activa'; }
+function companySuspended(id){ var x = db.companies.find(function(c){ return c.id===id; }); return !!(x && x.suspendida); }
+function jobIsActive(j){ return (!j.estado || j.estado==='activa') && !companySuspended(j.companyId); }
 function activeJobs(){ return db.jobs.filter(jobIsActive); }
 var lastJobSource = 'Directo';
 function candidateById(id){ return db.candidates.find(function(c){return c.id===id;}); }
@@ -1110,7 +1316,12 @@ function render(){
 
   if(seg==='' ) html = layoutPublic(viewHome());
   else if(seg==='jobs') html = layoutPublic(viewJobs());
-  else if(seg==='job') html = layoutPublic(viewJobDetail(parts[1]));
+  else if(seg==='job'){
+    if(SUPABASE_READY && !jobById(parts[1]) && !(jobFetchTried[parts[1]] && Date.now()-jobFetchTried[parts[1]] < 5000)){
+      jobFetchTried[parts[1]] = Date.now(); fetchJobById(parts[1]);
+      html = layoutPublic('<div class="wrap section"><div class="empty-state glass">'+icon('briefcase',34)+'<strong>Cargando oferta…</strong></div></div>');
+    } else html = layoutPublic(viewJobDetail(parts[1]));
+  }
   else if(seg==='login') html = layoutAuth(viewLogin());
   else if(seg==='register') html = layoutAuth(viewRegister());
   else if(seg==='reset-password') html = layoutAuth(viewResetPassword());
@@ -1129,6 +1340,8 @@ function render(){
   else if(seg==='messages'){ if(!db.session){go('#/login');return;} html = layoutApp(db.session.role,'messages', viewMessages(parts[1])); }
   else if(seg==='notifications'){ if(!db.session){go('#/login');return;} html = layoutApp(db.session.role,'notifications', viewNotifications()); }
   else if(seg==='settings'){ if(!db.session){go('#/login');return;} html = layoutApp(db.session.role,'settings', viewSettings()); }
+  else if(seg==='report'){ if(!db.session){ go('#/login'); return; } html = layoutApp(db.session.role,'', viewReport(parts[1], parts[2])); }
+  else if(seg==='apply'){ if(!requireAuth('candidate'))return; html = layoutApp('candidate','candidate-search', viewApply(parts[1])); }
   else if(seg==='profile-edit'){ if(!requireAuth('candidate'))return; html = layoutApp('candidate','profile', viewProfileEdit()); }
   else if(seg==='candidate'){ if(!db.session || (db.session.role!=='company' && !db.isAdmin)){ go('#/login'); return; } html = layoutApp(db.session.role==='company'?'company':'admin','candidates', viewCandidateProfile(parts[1])); }
   else if(seg==='candidate-search'){ if(!requireAuth('candidate'))return; html = layoutApp('candidate','jobs', viewJobsApp()); }
@@ -1137,9 +1350,10 @@ function render(){
   else if(seg==='my-jobs'){ if(!requireAuth('company'))return; html = layoutApp('company','my-jobs', viewMyJobs()); }
   else if(seg==='candidates'){ if(!requireAuth('company'))return; html = layoutApp('company','candidates', viewCandidates()); }
   else if(seg==='pipeline'){ if(!requireAuth('company'))return; html = layoutApp('company','pipeline', viewPipeline()); }
+  else if(seg==='company-edit'){ if(!requireAuth('company'))return; html = layoutApp('company','company-profile', viewCompanyEdit()); }
   else if(seg==='company-profile'){ if(!requireAuth('company'))return; html = layoutApp('company','company-profile', viewCompanyProfile()); }
   else if(seg==='company-stats'){ if(!requireAuth('company'))return; if(SUPABASE_READY && Date.now()-companyViews.loadedAt>30000) loadCompanyViews(); html = layoutApp('company','company-stats', viewCompanyStats()); }
-  else if(seg==='admin') html = (SUPABASE_READY && db.isAdmin) ? layoutApp('admin','admin', viewAdmin()) : layoutAuth(viewAdminGate());
+  else if(seg==='admin'){ if(SUPABASE_READY && db.isAdmin) loadAdminReports(); html = (SUPABASE_READY && db.isAdmin) ? layoutApp('admin','admin', viewAdmin()) : layoutAuth(viewAdminGate()); }
   else html = layoutPublic('<div class="wrap section"><div class="empty-state glass">'+icon('search',34)+'<strong>Página no encontrada</strong>Esa sección no existe.</div></div>');
 
   root.innerHTML = html;
@@ -1155,6 +1369,8 @@ function hideBootLoader(){
 }
 
 function afterRenderHooks(){
+  renderCaptcha();
+  if(currentRoute()[0]==='messages'){ var cb = document.getElementById('chatBody'); if(cb) cb.scrollTop = cb.scrollHeight; }
   if(currentRoute()[0]==='register' && regDraft){
     Object.keys(regDraft).forEach(function(k){
       var el = document.getElementById(k); if(!el) return;
@@ -1290,7 +1506,7 @@ function layoutApp(role, active, content){
           '<div class="user-chip">'+avatarShown+'<span style="font-size:0.84rem;font-weight:600;" class="hide-mobile">'+esc(nameShown)+'</span></div>'+
         '</div>'+
       '</div></header>'+
-      '<div class="content-pad">'+content+'</div>'+
+      '<div class="content-pad">'+((who && who.suspendida) ? '<div class="glass" style="padding:14px 18px;margin-bottom:18px;border-color:var(--danger);color:var(--danger);font-size:0.88rem;">Tu cuenta está suspendida por el equipo de Job-In. No puedes postularte, publicar ni enviar mensajes. Si crees que es un error, escríbenos.</div>' : '')+content+'</div>'+
     '</div>'+
   '</div>';
 }
@@ -1327,6 +1543,17 @@ function heroVisualSVG(){
   '</svg>';
 }
 
+function statsBannerHTML(){
+  var s = publicStats;
+  if(!s && !SUPABASE_READY){
+    s = { ofertas:activeJobs().length, empresas:db.companies.filter(function(x){return !x.sistema;}).length,
+          verificadas:db.companies.filter(function(x){return !x.sistema && x.verificada;}).length,
+          candidatos:db.candidates.filter(function(x){return !x.sistema;}).length };
+  }
+  var fmt = function(v){ return (v===undefined||v===null) ? '—' : Number(v).toLocaleString('es-CO'); };
+  var box = function(n,l){ return '<div class="stat-box glass"><div class="num">'+fmt(n)+'</div><div class="lbl">'+l+'</div></div>'; };
+  return '<section class="wrap"><div class="stats-banner">'+box(s&&s.ofertas,'Ofertas activas')+box(s&&s.empresas,'Empresas registradas')+box(s&&s.verificadas,'Empresas verificadas')+box(s&&s.candidatos,'Candidatos registrados')+'</div></section>';
+}
 function viewHome(){
   var featured = activeJobs().slice(0,6);
   var cats = ['Tecnología','Marketing','Diseño','Administración','Ingeniería','Salud','Educación','Ventas','Atención al cliente'];
@@ -1345,12 +1572,7 @@ function viewHome(){
     '<div class="hero-visual">'+heroVisualSVG()+'</div>'+
   '</div></section>'+
 
-  '<section class="wrap"><div class="stats-banner">'+
-    '<div class="stat-box glass"><div class="num">+25.000</div><div class="lbl">Ofertas activas</div></div>'+
-    '<div class="stat-box glass"><div class="num">+8.000</div><div class="lbl">Empresas registradas</div></div>'+
-    '<div class="stat-box glass"><div class="num">+120.000</div><div class="lbl">Usuarios</div></div>'+
-    '<div class="stat-box glass"><div class="num">95%</div><div class="lbl">Satisfacción</div></div>'+
-  '</div></section>'+
+  statsBannerHTML()+
 
   '<section class="wrap section"><div class="section-head"><h2>Ofertas destacadas</h2><a href="#/jobs" class="btn btn-ghost btn-sm">Ver todas '+icon('arrowRight',14)+'</a></div>'+
     '<div class="job-grid cols2">'+featured.map(function(j){return jobCardHTML(j);}).join('')+'</div>'+
@@ -1370,7 +1592,7 @@ function homeSearch(){
 function viewCompanies(){
   var visibleCompanies = db.companies.filter(function(c){return !c.sistema;});
   return '<section class="wrap section">'+
-    '<div class="section-head"><h2>Empresas en Job-In</h2><span class="muted">'+visibleCompanies.length+' empresas registradas (demo)</span></div>'+
+    '<div class="section-head"><h2>Empresas en Job-In</h2><span class="muted">'+visibleCompanies.length+' empresas</span></div>'+
     '<div class="grid3">'+visibleCompanies.map(function(c){
       var openJobs = activeJobs().filter(function(j){return j.companyId===c.id;}).length;
       return '<div class="glass" style="padding:22px;">'+
@@ -1378,6 +1600,7 @@ function viewCompanies(){
         '<div><div style="font-weight:700;">'+esc(c.nombre)+'</div>'+(c.verificada?'<span class="badge-verified">'+icon('verified',13)+' Empresa verificada</span>':'')+'</div></div>'+
         '<p class="muted" style="font-size:0.86rem;margin-top:14px;">'+esc(c.descripcion)+'</p>'+
         '<div class="row between" style="margin-top:16px;"><span class="muted" style="font-size:0.82rem;">'+esc(c.ciudad)+' · '+esc(c.sector)+'</span><span class="pill">'+openJobs+' vacantes</span></div>'+
+        ((db.session && db.session.role==='candidate') ? '<button class="btn btn-ghost btn-sm" style="margin-top:14px;" onclick="openThreadWith(\''+c.id+'\')">'+icon('message',14)+' Escribir a la empresa</button>' : '')+
       '</div>';
     }).join('')+'</div>'+
   '</section>';
@@ -1487,13 +1710,20 @@ function sortJobs(list){
   else if(jobSort==='match') l.sort(function(a,b){return matchScore(b)-matchScore(a);});
   return l;
 }
-function applyJobFilters(){
-  var list = activeJobs().filter(jobMatchesFilters);
-  list = sortJobs(list);
-  document.getElementById('jobResultsGrid').innerHTML = list.length ? list.map(function(j){return jobCardHTML(j);}).join('') :
-    '<div class="empty-state glass">'+icon('search',34)+'<strong>No encontramos ofertas con esos filtros</strong>Prueba con otra palabra clave o quita algún filtro.</div>';
+var JOB_PAGE_SIZE = 24, jobShown = 24;
+function renderJobResults(){
+  var grid = document.getElementById('jobResultsGrid');
+  if(!grid) return;
+  var list = sortJobs(activeJobs().filter(jobMatchesFilters));
+  var slice = list.slice(0, jobShown);
+  grid.innerHTML = list.length
+    ? slice.map(function(j){return jobCardHTML(j);}).join('') +
+      (list.length > slice.length ? '<div style="text-align:center;margin-top:8px;"><button class="btn btn-ghost" onclick="showMoreJobs()">Mostrar más ofertas ('+(list.length-slice.length)+' restantes)</button></div>' : '')
+    : '<div class="empty-state glass">'+icon('search',34)+'<strong>No encontramos ofertas con esos filtros</strong>Prueba con otra palabra clave o quita algún filtro.</div>';
   document.getElementById('jobResultsCount').textContent = list.length + (list.length===1?' oferta encontrada':' ofertas encontradas');
 }
+function showMoreJobs(){ jobShown += JOB_PAGE_SIZE; renderJobResults(); }
+function applyJobFilters(){ jobShown = JOB_PAGE_SIZE; renderJobResults(); scheduleRemoteJobSearch(); }
 
 function jobsSearchToolbar(prefillQ, prefillLoc){
   return '<div class="search-panel glass" style="margin-top:0;">'+
@@ -1552,6 +1782,7 @@ function viewJobDetail(id){
   var comp = companyOf(job);
   var cand = currentCandidate();
   var mres = cand ? matchFor(job, cand) : null;
+  var viewerIsCompany = !!(db.session && db.session.role==='company');
   trackJobView(job);
   var applied = cand ? db.applications.some(function(a){return a.jobId===job.id && a.candidateId===cand.id;}) : false;
   var saved = cand && db.savedJobs[cand.id] && db.savedJobs[cand.id].indexOf(job.id)!==-1;
@@ -1575,10 +1806,12 @@ function viewJobDetail(id){
         jdBox('Experiencia', job.experiencia)+
       '</div>'+
       '<div class="row gap12" style="flex-wrap:wrap;">'+
-        (applied ? '<button class="btn btn-ghost" disabled>'+icon('check',16)+' Ya te postulaste</button>' :
-          '<button class="btn btn-primary" onclick="applyToJob(\''+job.id+'\')">Postularme '+icon('arrowRight',16)+'</button>')+
+        (viewerIsCompany ? '' : (applied ? '<button class="btn btn-ghost" disabled>'+icon('check',16)+' Ya te postulaste</button>' :
+          '<button class="btn btn-primary" onclick="go(\'#/apply/'+job.id+'\')">Postularme '+icon('arrowRight',16)+'</button>'))+
         '<button class="btn btn-ghost" onclick="toggleSave(\''+job.id+'\')">'+icon('heart',16)+' '+(saved?'Guardada':'Guardar oferta')+'</button>'+
         '<button class="btn btn-ghost" onclick="shareJob(\''+job.id+'\')">'+icon('share',16)+' Compartir</button>'+
+        (cand ? '<button class="btn btn-ghost" onclick="openThreadWith(\''+job.companyId+'\')">'+icon('message',16)+' Preguntar a la empresa</button>' : '')+
+        ((db.session && db.session.id!==job.companyId) ? '<a class="btn btn-ghost" href="#/report/job/'+job.id+'" style="color:var(--gray);">'+icon('flag',15)+' Denunciar</a>' : '')+
       '</div>'+
     '</div>'+
     '<div class="jd-body">'+
@@ -1630,19 +1863,49 @@ function shareJob(id){
     fallbackCopy();
   }
 }
-function applyToJob(jobId){
+function applyToJob(jobId, carta){
   var cand = currentCandidate();
-  if(!cand){ go('#/login'); showToast('Inicia sesión para postularte'); return; }
-  var exists = db.applications.some(function(a){return a.jobId===jobId && a.candidateId===cand.id;});
-  if(exists){ showToast('Ya te postulaste a esta vacante'); return; }
+  if(!cand){ go('#/login'); showToast('Inicia sesión para postularte'); return false; }
+  if(cand.suspendida){ showToast('Tu cuenta está suspendida y no puedes postularte.'); return false; }
+  var prev = db.applications.find(function(a){return a.jobId===jobId && a.candidateId===cand.id;});
+  if(prev){ showToast(prev.etapa==='retirada' ? 'Retiraste tu postulación a esta vacante y no puedes volver a postularte.' : 'Ya te postulaste a esta vacante'); return false; }
   var jobToApply = jobById(jobId);
-  if(!jobToApply || !jobIsActive(jobToApply)){ showToast('Esta oferta ya no está disponible.'); return; }
-  db.applications.unshift({ id:genId('app'), jobId:jobId, candidateId:cand.id, estado:'Enviada', fecha:fmtDate(new Date().toISOString()), etapa:'nuevas', fuente:lastJobSource });
+  if(!jobToApply || !jobIsActive(jobToApply)){ showToast('Esta oferta ya no está disponible.'); return false; }
+  db.applications.unshift({ id:genId('app'), jobId:jobId, companyId:jobToApply.companyId, candidateId:cand.id, estado:'Enviada', fecha:fmtDate(new Date().toISOString()), etapa:'nuevas', fuente:lastJobSource, carta:String(carta||'').slice(0,1000) });
   notify(cand.id, 'Tu postulación a "'+jobToApply.title+'" fue enviada correctamente.');
   notify(jobToApply.companyId, cand.nombre+' '+(cand.apellido||'')+' se postuló a "'+jobToApply.title+'".');
   saveDB();
   showToast('Postulación enviada correctamente');
-  render();
+  return true;
+}
+function viewApply(jobId){
+  var job = jobById(jobId), cand = currentCandidate();
+  if(!job || !jobIsActive(job)) return '<div class="empty-state glass">'+icon('briefcase',34)+'<strong>Esta oferta ya no está disponible</strong><div style="margin-top:16px;"><a href="#/candidate-search" class="btn btn-primary">Ver otras ofertas</a></div></div>';
+  var prev = db.applications.find(function(a){ return a.jobId===jobId && a.candidateId===cand.id; });
+  if(prev) return '<div class="empty-state glass">'+icon('check',34)+'<strong>'+(prev.etapa==='retirada'?'Retiraste tu postulación a esta oferta':'Ya te postulaste a esta oferta')+'</strong><div style="margin-top:16px;"><a href="#/applications" class="btn btn-primary">Ver mis postulaciones</a></div></div>';
+  var comp = companyOf(job), m = matchFor(job, cand);
+  return '<div class="section-head"><h2>Postularme</h2><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+job.id+'\')">Volver a la oferta</button></div>'+
+  '<div class="glass" style="padding:22px;max-width:680px;">'+
+    '<div class="row gap12" style="margin-bottom:18px;">'+companyLogoHTML(comp)+'<div style="flex:1;"><div style="font-weight:700;font-size:1.05rem;">'+esc(job.title)+'</div><div class="muted" style="font-size:0.86rem;">'+esc(comp.nombre)+' · '+esc(job.ubicacion)+'</div></div><span class="pill">'+m.score+'% Match</span></div>'+
+    '<div class="field"><label>Carta de presentación (opcional)</label><textarea id="ap-carta" rows="8" maxlength="1000" placeholder="Cuéntale a la empresa por qué eres buena opción para este cargo."></textarea>'+
+    '<div class="field-note">Máximo 1000 caracteres. La empresa verá tu perfil y tu hoja de vida junto con esta carta.</div></div>'+
+    '<button class="btn btn-primary btn-full" style="margin-top:18px;" onclick="submitApplication(\''+job.id+'\')">Enviar postulación '+icon('arrowRight',16)+'</button>'+
+  '</div>';
+}
+function submitApplication(jobId){
+  var box = byId('ap-carta'), carta = box ? String(box.value||'').trim() : '';
+  if(carta.length > 1000){ showToast('La carta es muy larga (máximo 1000 caracteres).'); return; }
+  if(containsBadWords(carta)){ showToast('Tu carta contiene lenguaje que no está permitido en Job-In.'); return; }
+  if(applyToJob(jobId, carta)) go('#/applications');
+}
+function withdrawApplication(id){
+  var a = db.applications.find(function(x){ return x.id===id; }), cand = currentCandidate();
+  if(!a || !cand || a.candidateId!==cand.id) return;
+  if(!confirm('¿Retirar tu postulación? No podrás volver a postularte a esta oferta.')) return;
+  a.estado = 'Retirada'; a.etapa = 'retirada';
+  var j = jobById(a.jobId);
+  notify(a.companyId || (j && j.companyId), cand.nombre+' '+(cand.apellido||'')+' retiró su postulación'+(j ? ' a "'+j.title+'"' : '')+'.');
+  saveDB(); render(); showToast('Postulación retirada');
 }
 
 /* ================= LOGIN / REGISTER ================= */
@@ -1658,7 +1921,7 @@ function viewLogin(){
     '<div class="field pw-field" style="margin-top:14px;"><label>Contraseña</label><input id="li-pass" type="password" placeholder="••••••••" onkeydown="if(event.key===\'Enter\')doLogin()"><button class="pw-toggle" onclick="togglePw(\'li-pass\',this)">Mostrar</button></div>'+
     '<div class="checkrow"><label><input type="checkbox" checked> Recordarme</label><a href="javascript:void(0)" class="muted" onclick="forgotPassword()">¿Olvidaste tu contraseña?</a></div>'+
     (authError?'<p style="color:var(--danger);font-size:0.83rem;margin-bottom:14px;">'+esc(authError)+'</p>':'')+
-    '<button class="btn btn-primary btn-full" onclick="doLogin()">Iniciar sesión</button>'+
+    captchaBoxHTML()+'<button class="btn btn-primary btn-full" onclick="doLogin()">Iniciar sesión</button>'+
     '<p class="muted" style="text-align:center;font-size:0.85rem;margin-top:18px;">¿No tienes cuenta? <a href="#/register" style="color:var(--accent);font-weight:700;">Regístrate</a></p>'+
     ''+
   '</div>';
@@ -1689,7 +1952,9 @@ function forgotPassword(){
   if(!SUPABASE_READY){ showToast('La recuperación de contraseña necesita Supabase conectado.'); return; }
   var email = (byId('li-email') && byId('li-email').value || '').trim();
   if(!email){ authError='Escribe tu correo arriba y vuelve a hacer clic en "¿Olvidaste tu contraseña?".'; render(); return; }
-  sb.auth.resetPasswordForEmail(email, { redirectTo: getRedirectBase() }).then(function(res){
+  if(captchaEnabled() && !captchaToken){ authError='Completa la verificación anti-robots y vuelve a pulsar "¿Olvidaste tu contraseña?".'; render(); return; }
+  sb.auth.resetPasswordForEmail(email, { redirectTo: getRedirectBase(), captchaToken: captchaToken||undefined }).then(function(res){
+    resetCaptcha();
     showToast('Si ese correo tiene una cuenta, te enviamos un enlace para restablecer tu contraseña.');
   });
 }
@@ -1700,7 +1965,9 @@ function doLogin(){
   if(!email || !pass){ authError='Ingresa tu correo y tu contraseña.'; render(); return; }
 
   if(SUPABASE_READY){
-    sb.auth.signInWithPassword({email:email, password:pass}).then(function(res){
+    if(captchaEnabled() && !captchaToken){ authError='Completa la verificación anti-robots.'; render(); return; }
+    sb.auth.signInWithPassword({email:email, password:pass, options:{captchaToken:captchaToken||undefined}}).then(function(res){
+      resetCaptcha();
       if(res.error){ authError = translateSupabaseError(res.error); render(); return; }
       authError=''; showToast('Iniciando sesión…');
       /* el resto (perfil, rol, redirección) lo resuelve handleAuth al llegar SIGNED_IN */
@@ -1743,7 +2010,7 @@ function viewRegister(){
     '<div style="position:absolute;left:-9999px;top:-9999px;" aria-hidden="true"><label>No llenar este campo<input id="hp-website" tabindex="-1" autocomplete="off"></label></div>'+
     '<label class="checkline" style="margin-top:16px;align-items:flex-start;"><input type="checkbox" id="accept-terms" style="margin-top:3px;"><span>Acepto los <a href="#/terms" target="_blank" style="color:var(--accent);">Términos y condiciones</a> y la <a href="#/privacy" target="_blank" style="color:var(--accent);">Política de privacidad</a> de Job-In.</span></label>'+
     (authError?'<p style="color:var(--danger);font-size:0.83rem;margin-top:14px;">'+esc(authError)+'</p>':'')+
-    '<button class="btn btn-primary btn-full" style="margin-top:20px;" onclick="doRegister()">Crear cuenta</button>'+
+    captchaBoxHTML()+'<button class="btn btn-primary btn-full" style="margin-top:20px;" onclick="doRegister()">Crear cuenta</button>'+
     '<p class="muted" style="text-align:center;font-size:0.85rem;margin-top:18px;">¿Ya tienes cuenta? <a href="#/login" style="color:var(--accent);font-weight:700;">Inicia sesión</a></p>'+
   '</div>';
 }
@@ -1839,8 +2106,10 @@ function resendConfirmation(){
   });
 }
 function signUpRemote(role, email, pass, profile){
+  if(captchaEnabled() && !captchaToken){ authError='Completa la verificación anti-robots.'; render(); return; }
   try{ window.localStorage.setItem('jobin_last_signup', String(Date.now())); }catch(e){}
-  sb.auth.signUp({ email:email, password:pass, options:{ emailRedirectTo:getRedirectBase(), data:{ jobin_role:role, jobin_profile:profile } } }).then(function(res){
+  sb.auth.signUp({ email:email, password:pass, options:{ emailRedirectTo:getRedirectBase(), captchaToken:captchaToken||undefined, data:{ jobin_role:role, jobin_profile:profile } } }).then(function(res){
+    resetCaptcha();
     if(res.error || !res.data || !res.data.user){ authError = translateSupabaseError(res.error || {message:'No se pudo crear la cuenta.'}); render(); return; }
     var u = res.data.user;
     if(u.identities && u.identities.length===0){ authError='Ya existe una cuenta con ese correo. Intenta iniciar sesión.'; render(); return; }
@@ -1911,6 +2180,7 @@ async function handleAuthInner(event, session){
   var uid = session && session.user && session.user.id;
   if(event==='PASSWORD_RECOVERY'){ go('#/reset-password'); render(); return; }
   if(!uid){
+    unsubscribeRealtime();
     var wasLogged = !!db.session;
     db.session = null; db.isAdmin = false;
     if(loadedForUid){ loadedForUid = null; try{ await refreshData(); }catch(e){} }
@@ -1919,11 +2189,26 @@ async function handleAuthInner(event, session){
   }
   if(event==='TOKEN_REFRESHED') return;
   if(db.session && db.session.id===uid && event!=='USER_UPDATED' && event!=='INITIAL_SESSION') return;   /* SIGNED_IN repetido al volver a la pestaña */
-  if(loadedForUid !== uid){ try{ await refreshData(); }catch(e){} loadedForUid = uid; }
+  if(loadedForUid !== uid){ try{ await refreshData('all', uid); }catch(e){ console.error(e); } loadedForUid = uid; }
 
   var cand = db.candidates.find(function(c){return c.id===uid;});
   var comp = db.companies.find(function(c){return c.id===uid;});
   var created = false;
+  if(!cand && !comp){
+    /* antes de crear un perfil nuevo, confirmamos en el servidor que de verdad no existe (evita duplicar o pisar uno ya creado) */
+    try{
+      var rc = await fetchByIds('candidates', [uid]);
+      if(rc.length){ cand = rowToObj(rc[0]); db.candidates.push(cand); syncSnap.candidates[cand.id] = JSON.stringify(candRow(cand)); }
+      else {
+        var rco = await fetchByIds('companies', [uid]);
+        if(rco.length){ comp = rowToObj(rco[0]); db.companies.push(comp); syncSnap.companies[comp.id] = JSON.stringify(compRow(comp)); }
+      }
+    }catch(e){
+      console.error(e);
+      showToast('No pudimos cargar tu perfil. Revisa tu conexión y recarga la página.');
+      db.session = null; render(); return;
+    }
+  }
   if(!cand && !comp){
     var meta = session.user.user_metadata || {};
     var role = meta.jobin_role || null;
@@ -1945,7 +2230,13 @@ async function handleAuthInner(event, session){
     created = true;
   }
   db.session = { role: comp ? 'company' : 'candidate', id: uid };
+  var authEmail = String(session.user.email||'').toLowerCase();
+  if(cand && authEmail && String(cand.email||'').toLowerCase()!==authEmail){ cand.email = authEmail; saveDB(); }
+  if(comp && authEmail && String(comp.correo||'').toLowerCase()!==authEmail){ comp.correo = authEmail; saveDB(); }
+  var wasAdmin = db.isAdmin;
   await checkAdminFlag(uid);
+  if(db.isAdmin && !wasAdmin){ try{ await refreshData('all', uid); }catch(e){} }
+  subscribeRealtime(uid);
   if(created){
     await syncNow();                 /* guarda el perfil; un trigger crea el chat de bienvenida */
     try{ await refreshData(); }catch(e){}
@@ -2211,16 +2502,19 @@ function viewApplications(){
   if(!apps.length) return '<div class="section-head"><h2>Mis postulaciones</h2></div><div class="empty-state glass">'+icon('doc',34)+'<strong>Aún no tienes postulaciones</strong>Explora ofertas y postúlate para verlas aquí.<div style="margin-top:16px;"><button class="btn btn-primary" onclick="go(\'#/candidate-search\')">Buscar empleos</button></div></div>';
   return '<div class="section-head"><h2>Mis postulaciones</h2><span class="muted">'+apps.length+' postulaciones</span></div>'+
     apps.map(function(a){
-      var job = jobById(a.jobId); var comp = companyOf(job);
+      var job = jobById(a.jobId); if(!job) return '';
+      var comp = companyOf(job);
       var steps = ['Enviada','Vista','Entrevista','Decisión'];
-      var doneIdx = a.estado==='Enviada'?0 : a.estado==='En revisión'?0 : a.estado==='Vista'?1 : a.estado==='Entrevista'?2 : 3;
+      var doneIdx = a.estado==='Retirada'?0 : a.estado==='Enviada'?0 : a.estado==='En revisión'?0 : a.estado==='Vista'?1 : a.estado==='Entrevista'?2 : 3;
       return '<div class="app-card glass">'+
         '<div class="row between" style="flex-wrap:wrap;gap:10px;">'+
           '<div class="row gap12">'+companyLogoHTML(comp)+'<div><div style="font-weight:700;">'+esc(job.title)+'</div><div class="muted" style="font-size:0.85rem;">'+esc(comp.nombre)+' · '+esc(job.ubicacion)+'</div></div></div>'+
           '<div style="text-align:right;"><span class="status-badge status-'+statusClass(a.estado)+'">'+esc(a.estado)+'</span><div class="muted" style="font-size:0.78rem;margin-top:6px;">Postulado: '+esc(a.fecha)+'</div></div>'+
         '</div>'+
+        (a.carta ? '<p class="muted" style="font-size:0.82rem;margin-top:12px;"><strong style="color:var(--white);">Tu carta:</strong> '+esc(a.carta)+'</p>' : '')+
         '<div class="timeline">'+steps.map(function(s,i){return '<div class="tl-step '+(i<=doneIdx?'done':'')+'"><div class="tl-line"></div><div class="tl-dot"></div><div class="tl-label">'+s+'</div></div>';}).join('')+'</div>'+
-        '<div class="row gap8" style="margin-top:14px;"><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+job.id+'\')">Ver oferta</button><button class="btn btn-ghost btn-sm" onclick="openThreadWith(\''+job.companyId+'\')">'+icon('message',14)+' Mensaje a la empresa</button></div>'+
+        '<div class="row gap8" style="margin-top:14px;"><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+job.id+'\')">Ver oferta</button><button class="btn btn-ghost btn-sm" onclick="openThreadWith(\''+job.companyId+'\')">'+icon('message',14)+' Mensaje a la empresa</button>'+
+          ((['retirada','contratado'].indexOf(a.etapa)===-1 && a.estado!=='No seleccionado') ? '<button class="btn btn-danger btn-sm" onclick="withdrawApplication(\''+a.id+'\')">Retirar postulación</button>' : '')+'</div>'+
       '</div>';
     }).join('');
 }
@@ -2270,6 +2564,8 @@ function sendMessage(threadId){
     showToast('Tu mensaje contiene lenguaje que no está permitido en Job-In.');
     return;
   }
+  var meSusp = currentCandidate() || currentCompany();
+  if(meSusp && meSusp.suspendida){ showToast('Tu cuenta está suspendida y no puedes enviar mensajes.'); return; }
   if(text.length > 1000){ showToast('El mensaje es muy largo (máximo 1000 caracteres).'); return; }
   var nowTs = Date.now();
   if(nowTs - lastSendAt < 1500){ showToast('Espera un momento antes de enviar otro mensaje.'); return; }
@@ -2300,15 +2596,172 @@ function markAllRead(){ myNotifications().forEach(function(n){n.leida=true;}); s
 /* ================= SETTINGS (shared) ================= */
 function viewSettings(){
   var role = db.session.role;
-  return '<div class="section-head"><h2>Configuración</h2></div>'+
-  '<div class="glass" style="padding:22px;max-width:560px;">'+
-    '<div class="field"><label>Correo electrónico</label><input value="'+esc(role==='candidate'?currentCandidate().email||'':currentCompany().correo)+'"></div>'+
-    '<div class="field" style="margin-top:14px;"><label>Nueva contraseña</label><input type="password" placeholder="••••••••"></div>'+
-    '<label class="checkline" style="margin-top:10px;"><input type="checkbox" checked> Recibir notificaciones por correo</label>'+
+  var me = role==='candidate' ? currentCandidate() : currentCompany();
+  var email = role==='candidate' ? (me.email||'') : (me.correo||'');
+  var account = SUPABASE_READY ? (
+    '<div class="glass" style="padding:22px;margin-bottom:16px;"><h4 style="margin-bottom:14px;">Cuenta</h4>'+
+    '<div class="field"><label>Correo de acceso actual</label><input value="'+esc(email)+'" disabled></div>'+
+    '<div class="field" style="margin-top:14px;"><label>Nuevo correo</label><input id="st-email" type="email" placeholder="nuevo@correo.com"></div>'+
+    '<button class="btn btn-ghost btn-sm" style="margin-top:10px;" onclick="changeEmail()">Cambiar correo</button>'+
+    '<p class="field-note">Te enviaremos un enlace de confirmación. El cambio se aplica cuando lo confirmes.</p>'+
     '<hr class="divider">'+
-    '<button class="btn btn-primary btn-sm" onclick="showToast(\'Cambios guardados\')">Guardar cambios</button>'+
-    '<button class="btn btn-danger btn-sm" style="margin-left:8px;" onclick="showToast(\'Esta acción está deshabilitada en la demo\')">Eliminar cuenta</button>'+
+    '<div class="grid2"><div class="field pw-field"><label>Nueva contraseña</label><input id="st-p1" type="password" placeholder="••••••••"><button class="pw-toggle" onclick="togglePw(\'st-p1\',this)">Mostrar</button></div>'+
+    '<div class="field pw-field"><label>Confirmar contraseña</label><input id="st-p2" type="password" placeholder="••••••••"><button class="pw-toggle" onclick="togglePw(\'st-p2\',this)">Mostrar</button></div></div>'+
+    '<button class="btn btn-ghost btn-sm" style="margin-top:10px;" onclick="changePassword()">Cambiar contraseña</button></div>'
+  ) : '<div class="glass" style="padding:22px;margin-bottom:16px;"><h4>Cuenta</h4><p class="muted" style="font-size:0.88rem;margin-top:8px;">Cambiar el correo y la contraseña requiere que la plataforma esté conectada a Supabase.</p></div>';
+  var notif = role==='candidate' ? '<div class="glass" style="padding:22px;margin-bottom:16px;"><h4 style="margin-bottom:12px;">Notificaciones</h4>'+
+    '<label class="checkline"><input type="checkbox" id="st-notif" '+((me.preferencias||{}).notifEmail?'checked':'')+' onchange="toggleNotifEmail(this.checked)"> Recibir avisos también por correo electrónico</label>'+
+    '<p class="field-note">Los avisos dentro de la plataforma siempre se muestran.</p></div>' : '';
+  var data = '<div class="glass" style="padding:22px;"><h4 style="margin-bottom:6px;">Tus datos personales</h4>'+
+    '<p class="muted" style="font-size:0.86rem;line-height:1.7;">Tienes derecho a conocer, descargar y pedir la eliminación de tus datos (Ley 1581 de 2012, Habeas Data).</p>'+
+    '<button class="btn btn-ghost btn-sm" style="margin-top:14px;" onclick="exportMyData()">'+icon('download',14)+' Descargar mis datos (JSON)</button>'+
+    '<hr class="divider">'+
+    '<h4 style="color:var(--danger);margin-bottom:6px;">Eliminar mi cuenta</h4>'+
+    '<p class="muted" style="font-size:0.86rem;line-height:1.7;">Se borrarán tu perfil, '+(role==='candidate' ? 'tus postulaciones, tu hoja de vida adjunta, tu foto' : 'tus ofertas, tus postulaciones recibidas, tu logo')+', tus conversaciones y tus avisos. <strong style="color:var(--white);">Esta acción no se puede deshacer.</strong></p>'+
+    '<div class="field" style="margin-top:12px;max-width:320px;"><label>Escribe ELIMINAR para confirmar</label><input id="del-confirm" autocomplete="off"></div>'+
+    '<button class="btn btn-danger btn-sm" style="margin-top:12px;" onclick="deleteMyAccount()">'+icon('trash',14)+' Eliminar mi cuenta definitivamente</button></div>';
+  return '<div class="section-head"><h2>Configuración</h2></div><div style="max-width:640px;">'+account+notif+data+'</div>';
+}
+function changeEmail(){
+  var v = (byId('st-email').value||'').trim().toLowerCase();
+  if(!/^\S+@\S+\.\S+$/.test(v)){ showToast('Escribe un correo válido.'); return; }
+  sb.auth.updateUser({ email:v }, { emailRedirectTo:getRedirectBase() }).then(function(r){
+    if(r.error){ showToast(translateSupabaseError(r.error)); return; }
+    showToast('Te enviamos un enlace de confirmación a '+v+'.');
+  });
+}
+function changePassword(){
+  var p1 = byId('st-p1').value, p2 = byId('st-p2').value;
+  if(!p1 || p1.length<6){ showToast('La contraseña debe tener al menos 6 caracteres.'); return; }
+  if(p1!==p2){ showToast('Las contraseñas no coinciden.'); return; }
+  sb.auth.updateUser({ password:p1 }).then(function(r){
+    if(r.error){ showToast(translateSupabaseError(r.error)); return; }
+    byId('st-p1').value=''; byId('st-p2').value='';
+    showToast('Tu contraseña fue actualizada.');
+  });
+}
+function toggleNotifEmail(v){
+  var cnd = currentCandidate(); if(!cnd) return;
+  cnd.preferencias = cnd.preferencias || defaultPrefs(cnd.ciudad);
+  cnd.preferencias.notifEmail = !!v;
+  saveDB(); showToast(v ? 'Recibirás avisos por correo.' : 'Ya no recibirás avisos por correo.');
+}
+
+/* ---------- Habeas Data: descargar y eliminar mis datos ---------- */
+function buildMyExport(){
+  var s = db.session, role = s.role, me = role==='candidate' ? currentCandidate() : currentCompany();
+  var clean = Object.assign({}, me); delete clean.password;
+  var partner = function(t){ return role==='candidate' ? companyOf({companyId:t.companyId}).nombre : ((candidateById(t.candidateId)||{}).nombre || ''); };
+  var out = { generadoEn:new Date().toISOString(), tipoDeCuenta: role==='candidate' ? 'candidato' : 'empresa', perfil:clean };
+  out.conversaciones = db.threads.filter(function(t){ return t.companyId===s.id || t.candidateId===s.id; }).map(function(t){
+    return { con:partner(t), mensajes:(t.messages||[]).map(function(m){ return {de:m.from, texto:m.text, fecha:m.fecha}; }) };
+  });
+  out.notificaciones = myNotifications().map(function(n){ return {texto:n.text, fecha:n.fecha, leida:n.leida}; });
+  if(role==='candidate'){
+    out.postulaciones = db.applications.filter(function(a){ return a.candidateId===s.id; }).map(function(a){
+      var j = jobById(a.jobId); return { oferta:j?j.title:a.jobId, empresa:j?companyOf(j).nombre:'', estado:a.estado, fecha:a.fecha, cartaDePresentacion:a.carta||'' };
+    });
+    out.ofertasGuardadas = (db.savedJobs[s.id]||[]).map(function(id){ var j = jobById(id); return j ? j.title : id; });
+    out.archivos = { foto:me.fotoUrl||null, hojaDeVidaAdjunta:me.cvPath||null };
+  } else {
+    var mine = db.jobs.filter(function(j){ return j.companyId===s.id; });
+    var ids = mine.map(function(j){ return j.id; });
+    out.ofertasPublicadas = mine.map(function(j){ return { titulo:j.title, estado:j.estado||'activa', ubicacion:j.ubicacion, publicada:j.fechaPublicacion }; });
+    out.postulacionesRecibidas = db.applications.filter(function(a){ return ids.indexOf(a.jobId)!==-1; }).map(function(a){ var j = jobById(a.jobId); return { oferta:j?j.title:a.jobId, estado:a.estado, fecha:a.fecha }; });
+    out.archivos = { logo:me.logoUrl||null };
+  }
+  return out;
+}
+function downloadJson(name, obj){
+  try{
+    var blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a'); a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1500);
+    return true;
+  }catch(e){ console.error(e); return false; }
+}
+function exportMyData(){
+  if(!db.session) return;
+  var ok = downloadJson('mis-datos-job-in.json', buildMyExport());
+  showToast(ok ? 'Tus datos se descargaron.' : 'No se pudo generar el archivo.');
+}
+async function removeUserFiles(uid){
+  var buckets = ['avatars','logos','cvs'];
+  for(var i=0;i<buckets.length;i++){
+    try{
+      var l = await sb.storage.from(buckets[i]).list(uid);
+      if(l && l.data && l.data.length) await sb.storage.from(buckets[i]).remove(l.data.map(function(f){ return uid+'/'+f.name; }));
+    }catch(e){ console.error(e); }
+  }
+}
+async function deleteMyAccount(){
+  var conf = byId('del-confirm');
+  if(!conf || String(conf.value||'').trim().toUpperCase()!=='ELIMINAR'){ showToast('Escribe ELIMINAR para confirmar.'); return; }
+  if(!db.session) return;
+  var id = db.session.id;
+  if(!SUPABASE_READY){
+    db.applications = db.applications.filter(function(a){ var j = jobById(a.jobId); return a.candidateId!==id && !(j && j.companyId===id); });
+    db.jobs = db.jobs.filter(function(j){ return j.companyId!==id; });
+    db.candidates = db.candidates.filter(function(x){ return x.id!==id; });
+    db.companies = db.companies.filter(function(x){ return x.id!==id; });
+    db.threads = db.threads.filter(function(t){ return t.companyId!==id && t.candidateId!==id; });
+    db.notifications = db.notifications.filter(function(n){ return n.userId!==id; });
+    delete db.savedJobs[id];
+    db.session = null; saveDB(); go('#/'); render(); showToast('Tu cuenta y tus datos fueron eliminados.');
+    return;
+  }
+  showToast('Eliminando tu cuenta…');
+  await removeUserFiles(id);
+  var r = await sb.rpc('delete_my_account');
+  if(r.error){ showToast('No se pudo eliminar la cuenta: '+r.error.message); return; }
+  try{ await sb.auth.signOut({scope:'local'}); }catch(e){}
+  unsubscribeRealtime();
+  db.session = null; db.isAdmin = false; loadedForUid = null;
+  try{ await refreshData('all'); }catch(e){}
+  go('#/'); render();
+  showToast('Tu cuenta y tus datos fueron eliminados.');
+}
+
+/* ---------- Editar información de la empresa ---------- */
+function companyContactHTML(comp){
+  var site = normalizeUrl(comp.sitio||'');
+  var parts = [];
+  if(site) parts.push('<a href="'+esc(site)+'" target="_blank" rel="noopener noreferrer" style="color:var(--accent);">'+esc(comp.sitio)+'</a>');
+  if(comp.telefono) parts.push(esc(comp.telefono));
+  return parts.length ? '<p class="muted" style="margin-top:8px;font-size:0.84rem;">'+parts.join(' · ')+'</p>' : '';
+}
+function viewCompanyEdit(){
+  var comp = currentCompany();
+  var sectors = ['Tecnología','Diseño','Marketing','Salud','Educación','Ventas','Logística','Construcción','Finanzas','Otro'];
+  if(sectors.indexOf(comp.sector)===-1) sectors.unshift(comp.sector||'Otro');
+  return '<div class="section-head"><h2>Editar información de la empresa</h2><button class="btn btn-ghost btn-sm" onclick="go(\'#/company-profile\')">Volver al perfil</button></div>'+
+  '<div class="glass" style="padding:22px;max-width:680px;">'+
+    '<div class="field"><label>Nombre de la empresa</label><input id="ce-nombre" value="'+esc(comp.nombre)+'" maxlength="80"></div>'+
+    '<div class="grid2" style="margin-top:14px;"><div class="field"><label>Sector</label><select id="ce-sector">'+sectors.map(function(s){ return '<option'+(s===comp.sector?' selected':'')+'>'+esc(s)+'</option>'; }).join('')+'</select></div>'+
+    '<div class="field"><label>Ciudad</label><input id="ce-ciudad" list="colombiaCities" value="'+esc(comp.ciudad==='Sin especificar'?'':comp.ciudad)+'"></div></div>'+
+    '<div class="field" style="margin-top:14px;"><label>Descripción de la empresa</label><textarea id="ce-desc" rows="5" maxlength="1500" placeholder="Cuéntales a los candidatos a qué se dedica tu empresa">'+esc(comp.descripcion && comp.descripcion.indexOf('aún no ha completado')===-1 ? comp.descripcion : '')+'</textarea></div>'+
+    '<div class="grid2" style="margin-top:14px;"><div class="field"><label>Número de empleados</label><input id="ce-emp" value="'+esc(comp.empleados==='Por definir'?'':comp.empleados)+'" placeholder="Ej. 11 - 50"></div>'+
+    '<div class="field"><label>Año de creación</label><input id="ce-fund" value="'+esc(comp.fundacion==='Por definir'?'':comp.fundacion)+'" placeholder="Ej. 2018" maxlength="4"></div></div>'+
+    '<div class="grid2" style="margin-top:14px;"><div class="field"><label>Sitio web</label><input id="ce-sitio" value="'+esc(comp.sitio||'')+'" placeholder="tuempresa.com"></div>'+
+    '<div class="field"><label>Teléfono de contacto</label><input id="ce-tel" value="'+esc(comp.telefono||'')+'"></div></div>'+
+    '<button class="btn btn-primary btn-full" style="margin-top:20px;" onclick="saveCompanyEdit()">Guardar cambios</button>'+
   '</div>';
+}
+function saveCompanyEdit(){
+  var comp = currentCompany(); if(!comp) return;
+  var nombre = byId('ce-nombre').value.trim(), sector = byId('ce-sector').value, ciudad = byId('ce-ciudad').value.trim();
+  var desc = byId('ce-desc').value.trim(), emp = byId('ce-emp').value.trim(), fund = byId('ce-fund').value.trim();
+  var sitio = byId('ce-sitio').value.trim(), tel = byId('ce-tel').value.trim();
+  if(!nombre){ showToast('El nombre de la empresa es obligatorio.'); return; }
+  if([nombre,ciudad,desc,emp,sitio,tel].some(containsBadWords)){ showToast('Revisa tus datos: contienen lenguaje que no está permitido en Job-In.'); return; }
+  if(fund && !/^\d{4}$/.test(fund)){ showToast('El año de creación debe tener 4 dígitos.'); return; }
+  comp.nombre = nombre; comp.sector = sector; comp.ciudad = ciudad || 'Sin especificar';
+  comp.descripcion = desc || 'Esta empresa aún no ha completado su descripción.';
+  comp.empleados = emp || 'Por definir'; comp.fundacion = fund || 'Por definir';
+  comp.sitio = normalizeUrl(sitio); comp.telefono = tel;
+  saveDB(); showToast('Información actualizada'); go('#/company-profile');
 }
 
 /* ================= COMPANY: HOME ================= */
@@ -2384,6 +2837,7 @@ function splitCommas(v){ return v.split(',').map(function(s){return s.trim();}).
 function submitCompanyJob(e){
   e.preventDefault();
   var comp = currentCompany();
+  if(comp && comp.suspendida){ showToast('Tu cuenta está suspendida y no puedes publicar ofertas.'); return; }
   var textsToCheck = [byId('pj2-title').value, byId('pj2-area').value, byId('pj2-desc').value, byId('pj2-func').value, byId('pj2-req').value, byId('pj2-benef').value, byId('pj2-loc').value];
   if(textsToCheck.some(containsBadWords)){
     showToast('Revisa el texto de la oferta: contiene lenguaje que no está permitido en Job-In.');
@@ -2705,11 +3159,13 @@ function viewCandidateProfile(id){
     '<div class="row gap8" style="flex-wrap:wrap;">'+contactBtn+
       '<button class="btn btn-ghost" onclick="downloadCvById(\''+cand.id+'\')">'+icon('download',15)+' Descargar CV</button>'+
       (cand.cvPath ? '<button class="btn btn-ghost" onclick="openCvPath(\''+esc(cand.cvPath)+'\')">'+icon('doc',15)+' Ver PDF adjunto</button>' : '')+
+      '<a class="btn btn-ghost" href="#/report/candidate/'+cand.id+'" style="color:var(--gray);">'+icon('flag',15)+' Denunciar perfil</a>'+
     '</div>'+
   '</div>'+
   (apps.length ? '<div class="glass" style="padding:22px;margin-top:16px;"><h4 style="margin-bottom:12px;">Postulaciones a tus ofertas</h4>'+apps.map(function(a){
       var j = jobById(a.jobId), m = matchFor(j, cand);
       return '<div class="exp-item"><div class="row between" style="flex-wrap:wrap;gap:8px;"><div><div class="t1">'+esc(j.title)+'</div><div class="t3">Postuló: '+esc(a.fecha||'')+'</div></div><div class="row gap12"><span class="pill">'+m.score+'% Match</span><span class="status-badge status-'+statusClass(a.estado)+'">'+esc(a.estado)+'</span></div></div>'+
+        (a.carta ? '<p class="muted" style="font-size:0.85rem;margin-top:10px;line-height:1.6;"><strong style="color:var(--white);">Carta de presentación:</strong> '+esc(a.carta)+'</p>' : '')+
         (m.reasons.length ? '<div class="match-explain" style="margin-top:10px;">'+m.reasons.map(function(r){return '<div class="ok-line">'+icon('check',14)+' '+esc(r)+'</div>';}).join('')+'</div>' : '')+
         (m.gaps.length ? '<div class="match-explain" style="margin-top:8px;">'+m.gaps.map(function(g){return '<div class="ok-line"><span style="color:var(--warn);margin-top:2px;">•</span> '+esc(g)+'</div>';}).join('')+'</div>' : '')+'</div>';
     }).join('')+'</div>' : '')+
@@ -2768,7 +3224,7 @@ function loadCompanyViews(){
 function viewCompanyStats(){
   var comp = currentCompany();
   var ids = db.jobs.filter(function(j){return j.companyId===comp.id;}).map(function(j){return j.id;});
-  var apps = db.applications.filter(function(a){return ids.indexOf(a.jobId)!==-1;});
+  var apps = db.applications.filter(function(a){return ids.indexOf(a.jobId)!==-1 && a.etapa!=='retirada';});
   var byStage = {};
   pipelineStages.forEach(function(s){ byStage[s[0]] = apps.filter(function(a){return a.etapa===s[0];}).length; });
   var maxV = Math.max.apply(null, Object.keys(byStage).map(function(k){return byStage[k];}).concat([1]));
@@ -2888,9 +3344,10 @@ function viewCompanyProfile(){
   return '<div class="profile-head glass">'+
     companyLogoHTML(comp,'width:84px;height:84px;font-size:1.8rem;border-radius:18px;')+
     '<div style="flex:1;"><h2>'+esc(comp.nombre)+'</h2>'+(comp.verificada?'<span class="badge-verified">'+icon('verified',13)+' Empresa verificada</span>':'')+
-    '<p class="muted" style="margin-top:8px;font-size:0.89rem;max-width:60ch;">'+esc(comp.descripcion)+'</p></div>'+
+    '<p class="muted" style="margin-top:8px;font-size:0.89rem;max-width:60ch;">'+esc(comp.descripcion)+'</p>'+companyContactHTML(comp)+'</div>'+
     '<div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end;">'+
       '<label class="btn btn-primary" style="cursor:pointer;">'+icon('upload',15)+' '+(comp.logoUrl?'Cambiar logo':'Subir logo')+'<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none;" onchange="uploadCompanyLogo(this)"></label>'+
+      '<button class="btn btn-ghost btn-sm" onclick="go(\'#/company-edit\')">'+icon('edit',14)+' Editar información</button>'+
       (comp.logoUrl?'<button class="btn btn-ghost btn-sm" onclick="removeCompanyLogo()">Quitar logo</button>':'')+
     '</div>'+
   '</div>'+
@@ -2924,31 +3381,121 @@ function viewAdminGate(){
   '</div>';
 }
 function adminLogout(){ go('#/'); }
+var adminReports = {rows:[], loadedAt:0, loading:false};
+function loadAdminReports(force){
+  if(!SUPABASE_READY || !db.isAdmin || adminReports.loading) return;
+  if(!force && Date.now()-adminReports.loadedAt < 20000) return;
+  adminReports.loading = true;
+  sb.from('reports').select('*').order('created_at',{ascending:false}).limit(200).then(function(r){
+    adminReports.loading = false; adminReports.loadedAt = Date.now();
+    if(r.error) return;
+    adminReports.rows = r.data || [];
+    if(currentRoute()[0]==='admin') render();
+  });
+}
+function reportTargetInfo(type, id){
+  if(type==='job'){ var j = jobById(id); return j ? {label:j.title+' · '+companyOf(j).nombre, link:'#/job/'+id, job:j} : {label:'Oferta no disponible ('+id+')', link:null}; }
+  if(type==='candidate'){ var cd = candidateById(id); return cd ? {label:(cd.nombre||'')+' '+(cd.apellido||''), link:'#/candidate/'+id, person:cd, kind:'candidate'} : {label:'Candidato no disponible', link:null}; }
+  var co = db.companies.find(function(x){ return x.id===id; });
+  return co ? {label:co.nombre, link:null, person:co, kind:'company'} : {label:'Empresa no disponible', link:null};
+}
+function viewReport(type, id){
+  if(['job','candidate','company'].indexOf(type)===-1) return '<div class="empty-state glass"><strong>Denuncia no válida</strong></div>';
+  var info = reportTargetInfo(type, id);
+  var back = type==='job' ? '#/job/'+id : (type==='candidate' ? '#/candidate/'+id : '#/');
+  return '<div class="section-head"><h2>Enviar una denuncia</h2><button class="btn btn-ghost btn-sm" onclick="go(\''+back+'\')">Cancelar</button></div>'+
+  '<div class="glass" style="padding:22px;max-width:620px;">'+
+    '<p class="muted" style="font-size:0.88rem;line-height:1.7;margin-bottom:16px;">Vas a denunciar: <strong style="color:var(--white);">'+esc(info.label)+'</strong>. Nuestro equipo la revisará. Tu denuncia es confidencial: la otra parte no verá quién la envió.</p>'+
+    '<div class="field"><label>Motivo</label><select id="rp-reason">'+REPORT_REASONS.map(function(r){ return '<option>'+esc(r)+'</option>'; }).join('')+'</select></div>'+
+    '<div class="field" style="margin-top:14px;"><label>Cuéntanos qué pasó (opcional)</label><textarea id="rp-details" rows="5" maxlength="600" placeholder="Describe brevemente el problema"></textarea></div>'+
+    '<button class="btn btn-primary btn-full" style="margin-top:18px;" onclick="submitReport(\''+type+'\',\''+esc(id)+'\')">Enviar denuncia</button>'+
+  '</div>';
+}
+var REPORT_REASONS = ['Estafa o fraude','Piden dinero por contratar','Información falsa o engañosa','Contenido ofensivo o discriminatorio','Spam o publicidad','Otro'];
+async function submitReport(type, id){
+  if(!db.session) return;
+  var reason = byId('rp-reason').value, details = String((byId('rp-details')||{}).value||'').trim();
+  if(details.length > 600){ showToast('El detalle es muy largo (máximo 600 caracteres).'); return; }
+  if(containsBadWords(details)){ showToast('Tu texto contiene lenguaje que no está permitido en Job-In.'); return; }
+  var back = type==='job' ? '#/job/'+id : (type==='candidate' ? '#/candidate/'+id : '#/');
+  if(!SUPABASE_READY){ showToast('Gracias. Tu denuncia quedó registrada (modo local).'); go(back); return; }
+  var r = await sb.from('reports').insert({ id:genId('r'), reporter_id:db.session.id, target_type:type, target_id:id, reason:reason, details:details||null });
+  if(r.error){
+    showToast(/duplicate|unique/i.test(r.error.message) ? 'Ya denunciaste esto. Nuestro equipo lo está revisando.' : 'No se pudo enviar: '+r.error.message);
+    return;
+  }
+  showToast('Gracias. Nuestro equipo revisará tu denuncia.');
+  go(back);
+}
+async function setReportStatus(id, status){
+  var r = await sb.from('reports').update({ status:status, resolved_at: status==='abierta' ? null : new Date().toISOString() }).eq('id', id);
+  if(r.error){ showToast('No se pudo actualizar: '+r.error.message); return; }
+  var row = adminReports.rows.find(function(x){ return x.id===id; });
+  if(row){ row.status = status; }
+  render(); showToast(status==='abierta' ? 'Denuncia reabierta' : (status==='revisada' ? 'Denuncia marcada como revisada' : 'Denuncia descartada'));
+}
+function adminCloseJob(id){
+  var j = jobById(id); if(!j || !db.isAdmin) return;
+  if(!confirm('¿Cerrar esta oferta? Dejará de verse en las búsquedas.')) return;
+  j.estado = 'cerrada'; saveDB(); render(); showToast('Oferta cerrada');
+}
+function toggleSuspend(type, id){
+  if(!db.isAdmin) return;
+  var o = (type==='company' ? db.companies : db.candidates).find(function(x){ return x.id===id; });
+  if(!o) return;
+  if(!o.suspendida && !confirm('¿Suspender esta cuenta? No podrá postularse, publicar ni enviar mensajes.')) return;
+  o.suspendida = !o.suspendida;
+  saveDB(); render(); showToast(o.suspendida ? 'Cuenta suspendida' : 'Cuenta reactivada');
+}
+function reportBadge(s){
+  var m = { abierta:['Abierta','rgba(255,107,107,0.15)','var(--danger)'], revisada:['Revisada','rgba(92,206,124,0.15)','#5CCE7C'], descartada:['Descartada','rgba(169,178,184,0.15)','var(--gray)'] }[s] || ['—','transparent','var(--gray)'];
+  return '<span class="status-badge" style="background:'+m[1]+';color:'+m[2]+';">'+m[0]+'</span>';
+}
 function viewAdmin(){
   var realCandidates = db.candidates.filter(function(c){return !c.sistema;});
   var realCompanies = db.companies.filter(function(c){return !c.sistema;});
-  var totalUsers = realCandidates.length, totalComp = realCompanies.length, totalJobs = db.jobs.length;
+  var openReports = adminReports.rows.filter(function(r){ return r.status==='abierta'; });
+  var sorted = adminReports.rows.slice().sort(function(a,b){ return (a.status==='abierta'?0:1)-(b.status==='abierta'?0:1); });
+  var row = function(inner){ return '<div class="row between" style="padding:13px 0;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px;">'+inner+'</div>'; };
+  var reportsHTML = sorted.length ? sorted.map(function(r){
+    var info = reportTargetInfo(r.target_type, r.target_id);
+    var typeTxt = {job:'Oferta', candidate:'Candidato', company:'Empresa'}[r.target_type];
+    var acts = '';
+    if(info.link) acts += '<button class="btn btn-ghost btn-sm" onclick="go(\''+info.link+'\')">Ver</button>';
+    if(info.job && jobIsActive(info.job)) acts += '<button class="btn btn-danger btn-sm" onclick="adminCloseJob(\''+info.job.id+'\')">Cerrar oferta</button>';
+    if(info.person) acts += '<button class="btn btn-danger btn-sm" onclick="toggleSuspend(\''+info.kind+'\',\''+info.person.id+'\')">'+(info.person.suspendida?'Reactivar cuenta':'Suspender cuenta')+'</button>';
+    if(r.status==='abierta') acts += '<button class="btn btn-ghost btn-sm" onclick="setReportStatus(\''+r.id+'\',\'revisada\')">Marcar revisada</button><button class="btn btn-ghost btn-sm" onclick="setReportStatus(\''+r.id+'\',\'descartada\')">Descartar</button>';
+    else acts += '<button class="btn btn-ghost btn-sm" onclick="setReportStatus(\''+r.id+'\',\'abierta\')">Reabrir</button>';
+    return row('<div style="flex:1;min-width:240px;"><div><span class="pill">'+typeTxt+'</span> <strong>'+esc(info.label)+'</strong> '+reportBadge(r.status)+'</div>'+
+      '<div class="muted" style="font-size:0.84rem;margin-top:6px;">Motivo: '+esc(r.reason)+(r.details?' — '+esc(r.details):'')+'</div>'+
+      '<div class="muted" style="font-size:0.74rem;margin-top:4px;">'+esc(fmtDate(r.created_at))+'</div></div><div class="row gap8" style="flex-wrap:wrap;">'+acts+'</div>');
+  }).join('') : '<p class="muted" style="padding:16px 0;font-size:0.88rem;">No hay denuncias.</p>';
   return '<div class="section-head"><h2>Panel administrativo — Job-In</h2><button class="btn btn-ghost btn-sm" onclick="adminLogout()">'+icon('logout',14)+' Salir del panel</button></div>'+
   '<div class="grid4">'+
-    '<div class="kpi-card glass"><div class="num">'+totalUsers+'</div><div class="lbl">Usuarios candidatos</div></div>'+
-    '<div class="kpi-card glass"><div class="num">'+totalComp+'</div><div class="lbl">Empresas registradas</div></div>'+
-    '<div class="kpi-card glass"><div class="num">'+totalJobs+'</div><div class="lbl">Ofertas publicadas</div></div>'+
-    '<div class="kpi-card glass"><div class="num">'+db.applications.length+'</div><div class="lbl">Postulaciones totales</div></div>'+
+    '<div class="kpi-card glass"><div class="num">'+realCandidates.length+'</div><div class="lbl">Candidatos</div></div>'+
+    '<div class="kpi-card glass"><div class="num">'+realCompanies.length+'</div><div class="lbl">Empresas</div></div>'+
+    '<div class="kpi-card glass"><div class="num">'+db.jobs.length+'</div><div class="lbl">Ofertas</div></div>'+
+    '<div class="kpi-card glass"><div class="num" style="color:'+(openReports.length?'var(--danger)':'var(--white)')+';">'+openReports.length+'</div><div class="lbl">Denuncias abiertas</div></div>'+
   '</div>'+
+  '<div class="section-head" style="margin-top:26px;"><h4 style="font-family:var(--font-d);">Denuncias</h4></div>'+
+  '<div class="glass" style="padding:8px 20px;">'+reportsHTML+'</div>'+
   '<div class="section-head" style="margin-top:26px;"><h4 style="font-family:var(--font-d);">Empresas</h4></div>'+
-  '<div class="glass" style="padding:8px 20px;">'+realCompanies.map(function(c){
-    return '<div class="row between" style="padding:13px 0;border-bottom:1px solid var(--border);"><div class="row gap12">'+companyLogoHTML(c,'width:36px;height:36px;')+'<span>'+esc(c.nombre)+'</span>'+(c.verificada?'<span class="badge-verified">'+icon('verified',12)+' Verificada</span>':'<span class="muted" style="font-size:0.78rem;">Sin verificar</span>')+'</div>'+
-    '<div class="row gap8"><button class="btn btn-ghost btn-sm" onclick="toggleVerify(\''+c.id+'\')">'+(c.verificada?'Quitar verificación':'Verificar')+'</button><button class="btn btn-danger btn-sm" onclick="showToast(\'Empresa reportada para revisión (demo)\')">Moderar</button></div></div>';
-  }).join('')+'</div>'+
-  '<div class="section-head" style="margin-top:26px;"><h4 style="font-family:var(--font-d);">Ofertas publicadas</h4></div>'+
-  '<div class="glass" style="padding:8px 20px;">'+db.jobs.map(function(j){
-    var c = companyOf(j);
-    return '<div class="row between" style="padding:13px 0;border-bottom:1px solid var(--border);"><span>'+esc(j.title)+' <span class="muted" style="font-size:0.8rem;">· '+esc(c.nombre)+'</span></span><div class="row gap8"><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+j.id+'\')">Ver</button><button class="btn btn-danger btn-sm" onclick="removeJob(\''+j.id+'\');render()">Eliminar</button></div></div>';
-  }).join('')+'</div>'+
-  '<div class="section-head" style="margin-top:26px;"><h4 style="font-family:var(--font-d);">Categorías</h4></div>'+
-  '<div class="row gap8" style="flex-wrap:wrap;">'+['Tecnología','Marketing','Diseño','Administración','Ingeniería','Salud','Educación','Ventas'].map(function(c){return '<span class="tag">'+c+'</span>';}).join('')+'<button class="btn btn-ghost btn-sm" onclick="showToast(\'Categoría agregada (demo)\')">'+icon('plus',13)+' Nueva categoría</button></div>';
+  '<div class="glass" style="padding:8px 20px;">'+(realCompanies.length ? realCompanies.map(function(co){
+    return row('<div class="row gap12">'+companyLogoHTML(co,'width:36px;height:36px;')+'<span>'+esc(co.nombre)+'</span>'+(co.verificada?'<span class="badge-verified">'+icon('verified',12)+' Verificada</span>':'<span class="muted" style="font-size:0.78rem;">Sin verificar</span>')+(co.suspendida?' <span class="status-badge" style="background:rgba(255,107,107,0.15);color:var(--danger);">Suspendida</span>':'')+'</div>'+
+      '<div class="row gap8" style="flex-wrap:wrap;"><button class="btn btn-ghost btn-sm" onclick="toggleVerify(\''+co.id+'\')">'+(co.verificada?'Quitar verificación':'Verificar')+'</button><button class="btn btn-danger btn-sm" onclick="toggleSuspend(\'company\',\''+co.id+'\')">'+(co.suspendida?'Reactivar':'Suspender')+'</button></div>');
+  }).join('') : '<p class="muted" style="padding:16px 0;font-size:0.88rem;">Aún no hay empresas.</p>')+'</div>'+
+  '<div class="section-head" style="margin-top:26px;"><h4 style="font-family:var(--font-d);">Candidatos</h4></div>'+
+  '<div class="glass" style="padding:8px 20px;">'+(realCandidates.length ? realCandidates.map(function(cd){
+    return row('<div class="row gap12">'+avatarHTML(cd)+'<span>'+esc(cd.nombre)+' '+esc(cd.apellido||'')+'</span><span class="muted" style="font-size:0.78rem;">'+esc(cd.ciudad||'')+'</span>'+(cd.suspendida?' <span class="status-badge" style="background:rgba(255,107,107,0.15);color:var(--danger);">Suspendido</span>':'')+'</div>'+
+      '<div class="row gap8"><button class="btn btn-danger btn-sm" onclick="toggleSuspend(\'candidate\',\''+cd.id+'\')">'+(cd.suspendida?'Reactivar':'Suspender')+'</button></div>');
+  }).join('') : '<p class="muted" style="padding:16px 0;font-size:0.88rem;">Aún no hay candidatos.</p>')+'</div>'+
+  '<div class="section-head" style="margin-top:26px;"><h4 style="font-family:var(--font-d);">Ofertas</h4></div>'+
+  '<div class="glass" style="padding:8px 20px;">'+(db.jobs.length ? db.jobs.map(function(j){
+    var co = companyOf(j);
+    return row('<span>'+esc(j.title)+' <span class="muted" style="font-size:0.8rem;">· '+esc(co.nombre)+'</span> '+jobStatusBadge(j)+'</span><div class="row gap8"><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+j.id+'\')">Ver</button>'+(jobIsActive(j)?'<button class="btn btn-ghost btn-sm" onclick="adminCloseJob(\''+j.id+'\')">Cerrar</button>':'')+'<button class="btn btn-danger btn-sm" onclick="removeJob(\''+j.id+'\');render()">Eliminar</button></div>');
+  }).join('') : '<p class="muted" style="padding:16px 0;font-size:0.88rem;">Aún no hay ofertas.</p>')+'</div>';
 }
-function toggleVerify(id){ var c=db.companies.find(function(x){return x.id===id;}); c.verificada=!c.verificada; saveDB(); render(); }
+function toggleVerify(id){ var co=db.companies.find(function(x){return x.id===id;}); if(!co) return; co.verificada=!co.verificada; saveDB(); render(); }
 
 /* ================= INIT ================= */
 if(!location.hash) location.hash = '#/';
@@ -2961,6 +3508,7 @@ loadDB(function(){
       setTimeout(function(){ handleAuth(event, session); }, 0);
     });
     startPolling();
+    loadPublicStats();
   } else {
     render();
   }
