@@ -1013,7 +1013,7 @@ function onRealtimeNotification(row){
    Para activarlo: crea un widget gratis en https://dash.cloudflare.com (Turnstile), pega abajo la
    "Site key" y pon la "Secret key" en Supabase > Authentication > Attack Protection.
    Si TURNSTILE_SITE_KEY queda vacío, no se usa. */
-var TURNSTILE_SITE_KEY = '';
+var TURNSTILE_SITE_KEY = '0x4AAAAAAFuPhIM_IrhLScqZ';
 var captchaToken = '';
 function captchaEnabled(){ return !!TURNSTILE_SITE_KEY && SUPABASE_READY; }
 function captchaBoxHTML(){ return captchaEnabled() ? '<div id="cf-box" style="margin:16px 0 6px;min-height:66px;"></div>' : ''; }
