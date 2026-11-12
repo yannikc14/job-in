@@ -552,7 +552,7 @@ function seedDB(){
       { id:'cand3', nombre:'Andrés', apellido:'Torres', cargo:'Backend Developer', ciudad:'Medellín', habilidades:['Node.js','PostgreSQL','APIs'], experienciaAnios:'3 años', educacionNivel:'Profesional' },
       { id:'cand4', nombre:'Camila', apellido:'Rojas', cargo:'Analista de Datos', ciudad:'Cali', habilidades:['Python','SQL','Power BI'], experienciaAnios:'1 año', educacionNivel:'Profesional' },
       { id:'jobin-support-cd', sistema:true, nombre:'Equipo', apellido:'Job-In', email:'soporte@job-in.demo', ciudad:'Bogotá', telefono:'',
-        cargo:'Cuenta de soporte', sobreMi:'Cuenta de soporte de Job-In, usada para el chat de prueba.', perfilCompletado:100,
+        cargo:'Cuenta de soporte', sobreMi:'Cuenta oficial de Job-In.', perfilCompletado:100,
         experiencia:[], educacion:[], habilidades:[], idiomas:[], certificaciones:[], portafolio:[],
         preferencias:{ tipoEmpleo:'', experiencia:'', salarioEsperado:'', sectores:[], horario:'', ciudad:'', distancia:'', remoto:false, hibrido:false, presencial:false, notifJobs:false, notifMensajes:true, notifEmail:false, perfilPublico:false } }
     ],
@@ -567,7 +567,7 @@ function seedDB(){
         descripcion:'Consultora de datos y marketing digital que ayuda a marcas a tomar mejores decisiones con analítica aplicada.',
         empleados:'80 - 150', fundacion:'2014', sitio:'datapro.demo' },
       { id:'jobin-support-co', sistema:true, nombre:'Equipo Job-In', correo:'soporte@job-in.demo', sector:'Soporte', ciudad:'Bogotá', verificada:true,
-        descripcion:'Cuenta de soporte de Job-In, usada para el chat de prueba.', empleados:'—', fundacion:'—', sitio:'' }
+        descripcion:'Cuenta oficial de Job-In.', empleados:'—', fundacion:'—', sitio:'' }
     ],
     jobs: [
       { id:'job1', title:'Desarrollador Frontend', companyId:'comp1', area:'Tecnología', vacantes:2,
@@ -822,8 +822,7 @@ async function refreshData(scope, uidOverride){
   scope = scope || 'all';
   var uid = uidOverride || (db.session ? db.session.id : null), admin = !!db.isAdmin, needJobs = (scope==='all');
   var tbl = function(t, col, asc, limit){ var b = sb.from(t).select('*'); if(col) b = b.order(col,{ascending:!!asc}); if(limit) b = b.limit(limit); return b; };
-  var threadsQ = tbl('threads');
-  if(admin && uid) threadsQ = threadsQ.or('company_id.eq.'+uid+',candidate_id.eq.'+uid);
+  var threadsQ = tbl('threads');   /* la base de datos ya limita qué conversaciones puede ver cada persona */
   var calls = [ tbl('candidates', null, false, admin ? 1000 : 0), tbl('applications','created_at',false,1000), threadsQ, tbl('notifications','created_at',false,200), tbl('saved_jobs') ];
   if(needJobs){
     calls.push(tbl('jobs','created_at',false, admin ? 1000 : JOBS_PAGE));
@@ -1013,7 +1012,7 @@ function onRealtimeNotification(row){
    Para activarlo: crea un widget gratis en https://dash.cloudflare.com (Turnstile), pega abajo la
    "Site key" y pon la "Secret key" en Supabase > Authentication > Attack Protection.
    Si TURNSTILE_SITE_KEY queda vacío, no se usa. */
-var TURNSTILE_SITE_KEY = '0x4AAAAAAFuPhIM_IrhLScqZ';
+var TURNSTILE_SITE_KEY = '';
 var captchaToken = '';
 function captchaEnabled(){ return !!TURNSTILE_SITE_KEY && SUPABASE_READY; }
 function captchaBoxHTML(){ return captchaEnabled() ? '<div id="cf-box" style="margin:16px 0 6px;min-height:66px;"></div>' : ''; }
@@ -1454,7 +1453,7 @@ function sideNavCandidate(active){
   var items = [
     ['dashboard','home','Inicio'],['candidate-search','search','Buscar empleos'],['applications','doc','Mis postulaciones'],
     ['cv','layers','Mi hoja de vida'],['recommendations','star','Recomendaciones'],['preferences','settings','Preferencias'],
-    ['messages','message','Mensajes'],['notifications','bell','Notificaciones'],['settings','settings','Configuración']
+    ['messages','message','Mensajes'+awaitingSuffix()],['notifications','bell','Notificaciones'],['settings','settings','Configuración']
   ];
   return items.map(function(it){
     return '<a class="side-link '+(active===it[0]?'active':'')+'" href="#/'+it[0]+'" onclick="closeDrawers()" title="'+it[2]+'">'+icon(it[1])+'<span class="side-label">'+it[2]+'</span></a>';
@@ -1463,7 +1462,7 @@ function sideNavCandidate(active){
 function sideNavCompany(active){
   var items = [
     ['company','home','Inicio'],['post-job','plus','Publicar empleo'],['my-jobs','briefcase','Mis ofertas'],
-    ['candidates','user','Candidatos'],['pipeline','grid','Panel de reclutamiento'],['messages','message','Mensajes'],
+    ['candidates','user','Candidatos'],['pipeline','grid','Panel de reclutamiento'],['messages','message','Mensajes'+awaitingSuffix()],
     ['company-stats','chart','Estadísticas'],['company-profile','building','Perfil de empresa'],['settings','settings','Configuración']
   ];
   return items.map(function(it){
@@ -1477,7 +1476,7 @@ function sideNavAdmin(active){
 function layoutApp(role, active, content){
   var isCand = role==='candidate', isComp = role==='company', isAdmin = role==='admin';
   var unreadNotif = myNotifications().filter(function(n){return !n.leida;}).length;
-  var unreadMsg = 1;
+  var unreadMsg = awaitingCount() ? 1 : 0;
   var who = isCand ? currentCandidate() : (isComp ? currentCompany() : {nombre:'Administrador'});
   var nameShown = isCand ? (who.nombre+' '+who.apellido) : who.nombre;
   var initialsShown = isCand ? initials(who.nombre,who.apellido) : (who.nombre?who.nombre[0]:'A');
@@ -2059,14 +2058,6 @@ function viewPrivacy(){
     '<div class="jd-block glass"><h4>Tus derechos</h4><p class="muted" style="font-size:0.9rem;line-height:1.75;">Puedes acceder, corregir o solicitar la eliminación de tus datos personales en cualquier momento escribiéndonos. Como usuario en Colombia, tienes los derechos que otorga la Ley 1581 de 2012 sobre tus datos personales.</p></div>'+
   '</section>';
 }
-function makeWelcomeThread(role, id, nombre){
-  if(role==='candidate'){
-    return { id:'t'+Date.now()+Math.floor(Math.random()*1000), companyId:'jobin-support-co', candidateId:id,
-      messages:[{from:'company', text:'¡Hola '+(nombre||'')+'! Este es un chat de prueba para que revises cómo funciona tu bandeja de mensajes en Job-In. Escríbenos lo que quieras para probarlo.', fecha:'Ahora'}] };
-  }
-  return { id:'t'+Date.now()+Math.floor(Math.random()*1000), companyId:id, candidateId:'jobin-support-cd',
-    messages:[{from:'candidate', text:'¡Hola! Soy una cuenta de prueba para que revises la bandeja de mensajes de tu empresa en Job-In.', fecha:'Ahora'}] };
-}
 var registerShownAt = 0;
 var regDraft = null;
 var lastSignupEmail = '';
@@ -2086,10 +2077,10 @@ function makeWelcomeThread(role, id, nombre){
   /* solo modo local; en Supabase lo crea un trigger de la base de datos */
   if(role==='candidate'){
     return { id:genId('t'), companyId:'jobin-support-co', candidateId:id,
-      messages:[{id:genId('m'), from:'company', text:'¡Hola '+(nombre||'')+'! Este es un chat de prueba para que revises cómo funciona tu bandeja de mensajes en Job-In. Escríbenos lo que quieras para probarlo.', fecha:'Ahora'}] };
+      messages:[{id:genId('m'), from:'company', text:'¡Hola '+(nombre||'')+'! Soy del equipo de Job-In. Escríbenos por aquí tus dudas, problemas o sugerencias y te responderemos personalmente.', fecha:'Ahora'}] };
   }
   return { id:genId('t'), companyId:id, candidateId:'jobin-support-cd',
-    messages:[{id:genId('m'), from:'candidate', text:'¡Hola! Soy una cuenta de prueba para que revises la bandeja de mensajes de tu empresa en Job-In.', fecha:'Ahora'}] };
+    messages:[{id:genId('m'), from:'candidate', text:'¡Hola! Soy del equipo de Job-In. Escríbenos por aquí tus dudas, problemas o sugerencias y te responderemos personalmente.', fecha:'Ahora'}] };
 }
 function viewCheckEmail(){
   return '<div class="glass auth-card" style="text-align:center;">'+
@@ -2521,28 +2512,51 @@ function viewApplications(){
 
 /* ================= MESSAGES ================= */
 var openThreadId = null;
+/* Las personas ven "Equipo Job-In". Esas conversaciones le llegan al administrador a su bandeja normal de Mensajes. */
+var SUPPORT_CO = 'jobin-support-co', SUPPORT_CD = 'jobin-support-cd';
+function isSupportThread(t){ return t.companyId===SUPPORT_CO || t.candidateId===SUPPORT_CD; }
+function supportPersonId(t){ return t.companyId===SUPPORT_CO ? t.candidateId : t.companyId; }
+function adminAnswersSupport(t){ return !!(db.isAdmin && db.session && isSupportThread(t) && supportPersonId(t)!==db.session.id); }
+function threadRole(t){ if(adminAnswersSupport(t)) return t.companyId===SUPPORT_CO ? 'company' : 'candidate'; return db.session.role; }
+function threadIsMine(t){ var id = db.session.id; return t.candidateId===id || t.companyId===id || adminAnswersSupport(t); }
+function threadPartnerName(t){
+  if(adminAnswersSupport(t)){
+    var pid = supportPersonId(t);
+    var pc = candidateById(pid) || db.companies.find(function(x){ return x.id===pid; });
+    return pc ? (pc.nombre+' '+(pc.apellido||'')).trim() : 'Usuario';
+  }
+  if(db.session.role==='candidate'){ var co = db.companies.find(function(x){ return x.id===t.companyId; }); return co ? co.nombre : 'Empresa'; }
+  var cd = candidateById(t.candidateId); return cd ? (cd.nombre+' '+(cd.apellido||'')).trim() : 'Candidato';
+}
+/* "esperando tu respuesta": el último mensaje es de la otra parte (los saludos automáticos no cuentan) */
+function threadAwaiting(t){
+  var last = t.messages[t.messages.length-1];
+  if(!last) return false;
+  if(last.id && String(last.id).indexOf('wm_')===0) return false;
+  return last.from !== threadRole(t);
+}
+function awaitingCount(){ return db.session ? db.threads.filter(function(t){ return threadIsMine(t) && threadAwaiting(t); }).length : 0; }
+function awaitingSuffix(){ var n = awaitingCount(); return n ? ' ('+n+')' : ''; }
+
 function viewMessages(threadParam){
-  var role = db.session.role;
-  var myThreads = db.threads.filter(function(t){ return role==='candidate' ? t.candidateId===db.session.id : t.companyId===db.session.id; });
+  var myThreads = db.threads.filter(threadIsMine).sort(function(a,b){ return (threadAwaiting(b)?1:0) - (threadAwaiting(a)?1:0); });
   if(threadParam) openThreadId = threadParam;
   if(!openThreadId && myThreads.length) openThreadId = myThreads[0].id;
   var thread = myThreads.find(function(t){return t.id===openThreadId;});
   return '<div class="section-head"><h2>Mensajes</h2></div>'+
   '<div class="msg-layout glass">'+
     '<div class="thread-list">'+myThreads.map(function(t){
-      var other = role==='candidate' ? companyOf({companyId:t.companyId}) : candidateById(t.candidateId);
-      var otherName = role==='candidate' ? db.companies.find(function(c){return c.id===t.companyId;}).nombre : (other.nombre+' '+(other.apellido||''));
-      var last = t.messages[t.messages.length-1];
-      return '<div class="thread-item '+(t.id===openThreadId?'active':'')+'" onclick="openThreadId=\''+t.id+'\';render()"><div class="avatar">'+otherName[0]+'</div><div style="min-width:0;"><div class="name">'+esc(otherName)+'</div><div class="preview">'+esc(last?last.text:'')+'</div></div></div>';
+      var name = threadPartnerName(t), last = t.messages[t.messages.length-1];
+      return '<div class="thread-item '+(t.id===openThreadId?'active':'')+'" onclick="openThreadId=\''+t.id+'\';render()"><div class="avatar">'+esc(name[0]||'?')+'</div><div style="min-width:0;flex:1;"><div class="name">'+esc(name)+(adminAnswersSupport(t)?' <span class="pill" style="font-size:0.66rem;">Soporte</span>':'')+'</div><div class="preview">'+esc(last?last.text:'')+'</div></div>'+(threadAwaiting(t)?'<span class="icon-dot" style="position:static;flex-shrink:0;" title="Esperando tu respuesta"></span>':'')+'</div>';
     }).join('') + (!myThreads.length?'<div class="empty-state">'+icon('message',28)+'<strong>Sin conversaciones</strong></div>':'')+'</div>'+
     '<div class="chat-col">'+
-      (thread ? renderChat(thread, role) : '<div class="empty-state" style="margin:auto;">'+icon('message',30)+'<strong>Selecciona una conversación</strong></div>')+
+      (thread ? renderChat(thread, threadRole(thread)) : '<div class="empty-state" style="margin:auto;">'+icon('message',30)+'<strong>Selecciona una conversación</strong></div>')+
     '</div>'+
   '</div>';
 }
 function renderChat(thread, role){
-  var otherName = role==='candidate' ? db.companies.find(function(c){return c.id===thread.companyId;}).nombre : (function(){var c=candidateById(thread.candidateId); return c.nombre+' '+c.apellido;})();
-  return '<div class="chat-head"><div class="avatar">'+otherName[0]+'</div><div style="font-weight:700;">'+esc(otherName)+'</div></div>'+
+  var otherName = threadPartnerName(thread);
+  return '<div class="chat-head"><div class="avatar">'+esc(otherName[0]||'?')+'</div><div><div style="font-weight:700;">'+esc(otherName)+'</div>'+(adminAnswersSupport(thread)?'<div class="muted" style="font-size:0.74rem;">Respondes como Equipo Job-In</div>':'')+'</div></div>'+
     '<div class="chat-body" id="chatBody">'+thread.messages.map(function(m){
       var mine = (role==='candidate' && m.from==='candidate') || (role==='company' && m.from==='company');
       return '<div class="bubble '+(mine?'me':'them')+'">'+esc(m.text)+'<span class="time">'+esc(m.fecha)+'</span></div>';
@@ -2571,11 +2585,11 @@ function sendMessage(threadId){
   if(nowTs - lastSendAt < 1500){ showToast('Espera un momento antes de enviar otro mensaje.'); return; }
   lastSendAt = nowTs;
   var thread = db.threads.find(function(t){return t.id===threadId;});
-  var role = db.session.role;
+  var role = threadRole(thread);
   thread.messages.push({id:genId('m'), from:role, text:text, fecha:'Ahora'});
   var otherId = role==='candidate' ? thread.companyId : thread.candidateId;
   var meName = role==='candidate' ? ((currentCandidate()||{}).nombre||'Un candidato') : ((currentCompany()||{}).nombre||'Una empresa');
-  notify(otherId, 'Nuevo mensaje de '+meName+'.');
+  if(!isSupportThread(thread)) notify(otherId, 'Nuevo mensaje de '+meName+'.');   /* los avisos de soporte los crea la base de datos */
   saveDB();
   input.value='';
   render();
