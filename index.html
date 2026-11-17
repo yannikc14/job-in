@@ -1783,7 +1783,9 @@ function viewJobDetail(id){
   var mres = cand ? matchFor(job, cand) : null;
   var viewerIsCompany = !!(db.session && db.session.role==='company');
   trackJobView(job);
-  var applied = cand ? db.applications.some(function(a){return a.jobId===job.id && a.candidateId===cand.id;}) : false;
+  var prevApp = cand ? db.applications.find(function(a){return a.jobId===job.id && a.candidateId===cand.id;}) : null;
+  var applied = !!prevApp && prevApp.etapa!=='retirada';
+  var reWait = (prevApp && prevApp.etapa==='retirada') ? reapplyWaitMs(prevApp) : 0;
   var saved = cand && db.savedJobs[cand.id] && db.savedJobs[cand.id].indexOf(job.id)!==-1;
   return '<section class="wrap section" style="padding-top:36px;">'+
     '<div class="jd-head glass">'+
@@ -1806,7 +1808,8 @@ function viewJobDetail(id){
       '</div>'+
       '<div class="row gap12" style="flex-wrap:wrap;">'+
         (viewerIsCompany ? '' : (applied ? '<button class="btn btn-ghost" disabled>'+icon('check',16)+' Ya te postulaste</button>' :
-          '<button class="btn btn-primary" onclick="go(\'#/apply/'+job.id+'\')">Postularme '+icon('arrowRight',16)+'</button>'))+
+          (reWait>0 ? '<button class="btn btn-ghost" disabled>'+icon('doc',16)+' Podrás volver a postularte en '+fmtWait(reWait)+'</button>' :
+          '<button class="btn btn-primary" onclick="go(\'#/apply/'+job.id+'\')">'+(prevApp?'Postularme de nuevo ':'Postularme ')+icon('arrowRight',16)+'</button>')))+
         '<button class="btn btn-ghost" onclick="toggleSave(\''+job.id+'\')">'+icon('heart',16)+' '+(saved?'Guardada':'Guardar oferta')+'</button>'+
         '<button class="btn btn-ghost" onclick="shareJob(\''+job.id+'\')">'+icon('share',16)+' Compartir</button>'+
         (cand ? '<button class="btn btn-ghost" onclick="openThreadWith(\''+job.companyId+'\')">'+icon('message',16)+' Preguntar a la empresa</button>' : '')+
@@ -1862,17 +1865,44 @@ function shareJob(id){
     fallbackCopy();
   }
 }
+var REAPPLY_HOURS = 24;
+/* milisegundos que faltan para poder volver a postularse (0 = ya puede) */
+function reapplyWaitMs(a){
+  var t = a && a.retiradaAt ? new Date(a.retiradaAt).getTime() : 0;
+  if(!t || isNaN(t)) return 0;
+  return Math.max(0, t + REAPPLY_HOURS*3600*1000 - Date.now());
+}
+function fmtWait(ms){
+  var min = Math.max(1, Math.ceil(ms/60000));
+  if(min < 60) return min+' min';
+  var h = Math.floor(min/60), m = min % 60;
+  return h+' h'+(m ? ' '+m+' min' : '');
+}
 function applyToJob(jobId, carta){
   var cand = currentCandidate();
   if(!cand){ go('#/login'); showToast('Inicia sesión para postularte'); return false; }
   if(cand.suspendida){ showToast('Tu cuenta está suspendida y no puedes postularte.'); return false; }
   var prev = db.applications.find(function(a){return a.jobId===jobId && a.candidateId===cand.id;});
-  if(prev){ showToast(prev.etapa==='retirada' ? 'Retiraste tu postulación a esta vacante y no puedes volver a postularte.' : 'Ya te postulaste a esta vacante'); return false; }
+  if(prev && prev.etapa!=='retirada'){ showToast('Ya te postulaste a esta vacante'); return false; }
+  if(prev){
+    var wait = reapplyWaitMs(prev);
+    if(wait > 0){ showToast('Retiraste tu postulación. Podrás volver a postularte en '+fmtWait(wait)+'.'); return false; }
+  }
   var jobToApply = jobById(jobId);
   if(!jobToApply || !jobIsActive(jobToApply)){ showToast('Esta oferta ya no está disponible.'); return false; }
-  db.applications.unshift({ id:genId('app'), jobId:jobId, companyId:jobToApply.companyId, candidateId:cand.id, estado:'Enviada', fecha:fmtDate(new Date().toISOString()), etapa:'nuevas', fuente:lastJobSource, carta:String(carta||'').slice(0,1000) });
-  notify(cand.id, 'Tu postulación a "'+jobToApply.title+'" fue enviada correctamente.');
-  notify(jobToApply.companyId, cand.nombre+' '+(cand.apellido||'')+' se postuló a "'+jobToApply.title+'".');
+  var texto = String(carta||'').slice(0,1000), nombre = cand.nombre+' '+(cand.apellido||'');
+  if(prev){
+    /* vuelve a postularse: se reactiva la misma postulación (queda como nueva) */
+    prev.estado = 'Enviada'; prev.etapa = 'nuevas'; prev.fecha = fmtDate(new Date().toISOString());
+    prev.fuente = lastJobSource; prev.carta = texto; prev.createdAt = new Date().toISOString();
+    delete prev.retiradaAt; delete prev.contratadoAt;
+    notify(cand.id, 'Tu postulación a "'+jobToApply.title+'" fue enviada de nuevo.');
+    notify(jobToApply.companyId, nombre+' volvió a postularse a "'+jobToApply.title+'".');
+  } else {
+    db.applications.unshift({ id:genId('app'), jobId:jobId, companyId:jobToApply.companyId, candidateId:cand.id, estado:'Enviada', fecha:fmtDate(new Date().toISOString()), etapa:'nuevas', fuente:lastJobSource, carta:texto });
+    notify(cand.id, 'Tu postulación a "'+jobToApply.title+'" fue enviada correctamente.');
+    notify(jobToApply.companyId, nombre+' se postuló a "'+jobToApply.title+'".');
+  }
   saveDB();
   showToast('Postulación enviada correctamente');
   return true;
@@ -1881,11 +1911,13 @@ function viewApply(jobId){
   var job = jobById(jobId), cand = currentCandidate();
   if(!job || !jobIsActive(job)) return '<div class="empty-state glass">'+icon('briefcase',34)+'<strong>Esta oferta ya no está disponible</strong><div style="margin-top:16px;"><a href="#/candidate-search" class="btn btn-primary">Ver otras ofertas</a></div></div>';
   var prev = db.applications.find(function(a){ return a.jobId===jobId && a.candidateId===cand.id; });
-  if(prev) return '<div class="empty-state glass">'+icon('check',34)+'<strong>'+(prev.etapa==='retirada'?'Retiraste tu postulación a esta oferta':'Ya te postulaste a esta oferta')+'</strong><div style="margin-top:16px;"><a href="#/applications" class="btn btn-primary">Ver mis postulaciones</a></div></div>';
+  if(prev && prev.etapa!=='retirada') return '<div class="empty-state glass">'+icon('check',34)+'<strong>Ya te postulaste a esta oferta</strong><div style="margin-top:16px;"><a href="#/applications" class="btn btn-primary">Ver mis postulaciones</a></div></div>';
+  if(prev && reapplyWaitMs(prev) > 0) return '<div class="empty-state glass">'+icon('doc',34)+'<strong>Retiraste tu postulación a esta oferta</strong>Podrás volver a postularte en '+fmtWait(reapplyWaitMs(prev))+'.<div style="margin-top:16px;"><a href="#/applications" class="btn btn-primary">Ver mis postulaciones</a></div></div>';
   var comp = companyOf(job), m = matchFor(job, cand);
-  return '<div class="section-head"><h2>Postularme</h2><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+job.id+'\')">Volver a la oferta</button></div>'+
+  return '<div class="section-head"><h2>'+(prev?'Volver a postularme':'Postularme')+'</h2><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+job.id+'\')">Volver a la oferta</button></div>'+
   '<div class="glass" style="padding:22px;max-width:680px;">'+
     '<div class="row gap12" style="margin-bottom:18px;">'+companyLogoHTML(comp)+'<div style="flex:1;"><div style="font-weight:700;font-size:1.05rem;">'+esc(job.title)+'</div><div class="muted" style="font-size:0.86rem;">'+esc(comp.nombre)+' · '+esc(job.ubicacion)+'</div></div><span class="pill">'+m.score+'% Match</span></div>'+
+    (prev ? '<p class="muted" style="font-size:0.84rem;margin-bottom:14px;">Ya habías retirado tu postulación a esta oferta. Si te postulas de nuevo y la retiras, tendrás que esperar otras '+REAPPLY_HOURS+' horas.</p>' : '')+
     '<div class="field"><label>Carta de presentación (opcional)</label><textarea id="ap-carta" rows="8" maxlength="1000" placeholder="Cuéntale a la empresa por qué eres buena opción para este cargo."></textarea>'+
     '<div class="field-note">Máximo 1000 caracteres. La empresa verá tu perfil y tu hoja de vida junto con esta carta.</div></div>'+
     '<button class="btn btn-primary btn-full" style="margin-top:18px;" onclick="submitApplication(\''+job.id+'\')">Enviar postulación '+icon('arrowRight',16)+'</button>'+
@@ -1900,8 +1932,8 @@ function submitApplication(jobId){
 function withdrawApplication(id){
   var a = db.applications.find(function(x){ return x.id===id; }), cand = currentCandidate();
   if(!a || !cand || a.candidateId!==cand.id) return;
-  if(!confirm('¿Retirar tu postulación? No podrás volver a postularte a esta oferta.')) return;
-  a.estado = 'Retirada'; a.etapa = 'retirada';
+  if(!confirm('¿Retirar tu postulación? Podrás volver a postularte a esta oferta después de '+REAPPLY_HOURS+' horas.')) return;
+  a.estado = 'Retirada'; a.etapa = 'retirada'; a.retiradaAt = new Date().toISOString();
   var j = jobById(a.jobId);
   notify(a.companyId || (j && j.companyId), cand.nombre+' '+(cand.apellido||'')+' retiró su postulación'+(j ? ' a "'+j.title+'"' : '')+'.');
   saveDB(); render(); showToast('Postulación retirada');
@@ -2505,7 +2537,8 @@ function viewApplications(){
         (a.carta ? '<p class="muted" style="font-size:0.82rem;margin-top:12px;"><strong style="color:var(--white);">Tu carta:</strong> '+esc(a.carta)+'</p>' : '')+
         '<div class="timeline">'+steps.map(function(s,i){return '<div class="tl-step '+(i<=doneIdx?'done':'')+'"><div class="tl-line"></div><div class="tl-dot"></div><div class="tl-label">'+s+'</div></div>';}).join('')+'</div>'+
         '<div class="row gap8" style="margin-top:14px;"><button class="btn btn-ghost btn-sm" onclick="go(\'#/job/'+job.id+'\')">Ver oferta</button><button class="btn btn-ghost btn-sm" onclick="openThreadWith(\''+job.companyId+'\')">'+icon('message',14)+' Mensaje a la empresa</button>'+
-          ((['retirada','contratado'].indexOf(a.etapa)===-1 && a.estado!=='No seleccionado') ? '<button class="btn btn-danger btn-sm" onclick="withdrawApplication(\''+a.id+'\')">Retirar postulación</button>' : '')+'</div>'+
+          ((['retirada','contratado'].indexOf(a.etapa)===-1 && a.estado!=='No seleccionado') ? '<button class="btn btn-danger btn-sm" onclick="withdrawApplication(\''+a.id+'\')">Retirar postulación</button>' : '')+
+          (a.etapa==='retirada' ? (reapplyWaitMs(a)>0 ? '<span class="muted" style="font-size:0.8rem;align-self:center;">Podrás volver a postularte en '+fmtWait(reapplyWaitMs(a))+'</span>' : '<button class="btn btn-primary btn-sm" onclick="go(\'#/apply/'+job.id+'\')">Volver a postularme</button>') : '')+'</div>'+
       '</div>';
     }).join('');
 }
