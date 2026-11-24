@@ -1,0 +1,313 @@
+{
+  "cursos": [
+    {
+      "id": "hoja-de-vida-que-abre-puertas",
+      "titulo": "Hoja de vida que abre puertas",
+      "descripcion": "Aprende a armar una hoja de vida clara, honesta y adaptada a cada vacante, incluso si tienes poca experiencia. Sal con un documento listo para enviar.",
+      "categoria": "Hoja de vida",
+      "nivel": "Básico",
+      "duracionMinutos": 60,
+      "paraQuien": "Personas que van a crear o mejorar su hoja de vida para aplicar a ofertas de trabajo en Colombia.",
+      "lecciones": [
+        {
+          "titulo": "Qué es una hoja de vida y qué busca quien la lee",
+          "minutos": 10,
+          "contenido": "Tu hoja de vida es un documento de venta: su único trabajo es lograr que alguien te llame para una entrevista. No tiene que contar toda tu historia, solo la parte que le sirve a la empresa para decidir que vale la pena conocerte.\n\n## Cómo la leen realmente\n\nQuien selecciona personal suele revisar muchas hojas de vida en poco tiempo. Por eso, los primeros segundos son decisivos. Mira rápido tu nombre, tu perfil, tus últimos trabajos y tu formación. Si no encuentra pronto lo que busca, pasa a la siguiente. Además, en varias empresas las hojas de vida pasan primero por un sistema que filtra por palabras clave relacionadas con el cargo.\n\n## Qué busca quien selecciona\n\n- Que cumplas los requisitos básicos de la vacante.\n- Que tu información sea clara y fácil de verificar.\n- Que muestres resultados, no solo una lista de tareas.\n- Que seas una persona cuidadosa: sin errores de ortografía ni datos desordenados.\n\n## Errores comunes\n\n- Hacerla demasiado larga, con información que no tiene relación con el cargo.\n- Usar exactamente la misma hoja de vida para todas las vacantes.\n- Tener un correo poco serio, como un apodo o una frase graciosa.\n- Enviarla en un formato que se desconfigura al abrirla en otro equipo, en lugar de PDF.\n- Exagerar o inventar datos: pueden verificarse y hacerte perder la oportunidad.\n\n## Un ejemplo\n\nImagina dos personas que aplican a un cargo de auxiliar de bodega. Laura envía cuatro páginas con todos los cursos que ha hecho desde el colegio. Camilo envía una sola página con su experiencia en inventarios, su manejo de equipos de cargue y un logro concreto: ayudó a reducir errores en los despachos de su turno. Aunque Laura tenga más estudios, Camilo responde mejor a lo que la empresa necesita y es más probable que lo llamen.\n\n## Principio guía\n\nAntes de escribir, pregúntate: ¿qué necesita esta empresa y cómo demuestro que puedo dárselo? Cada línea de tu hoja de vida debe ayudar a responder esa pregunta. Si una línea no ayuda, quítala.\n\nEn las siguientes lecciones armarás tu documento paso a paso: datos de contacto, perfil, experiencia, formación y revisión final. Ten a mano tus certificados, las fechas aproximadas de tus trabajos y los nombres de las empresas donde has estado.",
+          "video": "",
+          "ejercicio": "Busca una oferta de empleo real que te interese y subraya las 5 palabras o requisitos que más se repiten. Escríbelas en una hoja: serán tu guía para el resto del curso."
+        },
+        {
+          "titulo": "Estructura, formato y datos de contacto",
+          "minutos": 10,
+          "contenido": "Una buena hoja de vida se entiende de un vistazo. Eso depende más del orden y la limpieza que de colores o diseños llamativos.\n\n## Orden recomendado\n\n- Nombre completo y datos de contacto.\n- Perfil profesional (3 o 4 líneas).\n- Experiencia laboral, de la más reciente a la más antigua.\n- Formación académica y cursos relevantes.\n- Habilidades y herramientas.\n- Referencias (se pueden indicar «disponibles a solicitud» si no tienes espacio).\n\nSi tienes poca experiencia, puedes poner la formación y las habilidades antes de la experiencia. Lo importante es que lo más fuerte para esa vacante quede arriba.\n\n## Datos de contacto\n\nIncluye tu nombre, un número de celular donde de verdad contestes, un correo profesional y tu ciudad o barrio general de residencia. Esto último es útil porque muchas empresas consideran la cercanía al lugar de trabajo.\n\nEl correo debe ser sencillo, por ejemplo, tu nombre y apellido. Si el que tienes es un apodo, crea uno nuevo gratis. Revisa también el mensaje de tu buzón de voz y tu foto de WhatsApp, porque a veces la empresa lo primero que ve es eso.\n\n## Formato\n\n- Una página es ideal; dos solo si tienes mucha experiencia relevante.\n- Letra legible, de tamaño normal, con un solo tipo de fuente.\n- Márgenes cómodos y espacios entre secciones.\n- Guárdala en PDF con un nombre claro, por ejemplo: HojaDeVida_NombreApellido.\n- Si incluyes foto, que sea reciente, de rostro, con fondo sencillo y ropa formal. Si no sabes si ponerla, revisa lo que pide la oferta.\n\n## Ejemplo de nombre de archivo\n\nMalo: documento final 2 (copia).pdf\nBueno: HojaDeVida_AndreaRojas.pdf\n\nQuien recibe cien archivos agradece poder identificar el tuyo sin abrirlo.\n\n## Consejo práctico\n\nPide a una persona de confianza que abra tu PDF en su celular. Muchos reclutadores revisan desde el teléfono, y si tu documento se ve desordenado en pantalla pequeña, debes simplificarlo. También verifica que los números y el correo estén bien escritos: un solo dígito equivocado puede costarte una llamada importante.",
+          "video": "",
+          "ejercicio": "Crea o revisa tu correo profesional y escribe en una hoja tus datos de contacto tal como aparecerán en la hoja de vida. Pide a alguien que te llame para confirmar que el número está bien escrito."
+        },
+        {
+          "titulo": "Perfil profesional y experiencia con logros",
+          "minutos": 10,
+          "contenido": "El perfil y la experiencia son las partes que más pesan. Aquí es donde pasas de decir «hice esto» a mostrar «esto fue lo que logré».\n\n## El perfil profesional\n\nSon 3 o 4 líneas que resumen quién eres, qué sabes hacer y qué buscas. Una fórmula sencilla:\n\n- Quién eres (cargo u oficio y años de experiencia, si los tienes).\n- Qué fortalezas tienes.\n- Qué aportas a la empresa.\n\nEjemplo: «Auxiliar administrativa con experiencia en facturación, archivo y atención al cliente. Organizada, puntual y con buen manejo de Excel. Busco aportar orden y rapidez en los procesos de una empresa en crecimiento.»\n\nEvita frases vacías como «persona responsable y proactiva en busca de oportunidades». Todo el mundo las usa y no dicen nada.\n\n## La experiencia laboral\n\nPara cada trabajo escribe: cargo, empresa, ciudad y fechas (mes y año aproximados). Debajo, de 2 a 4 viñetas con lo más importante.\n\n## Tareas vs. logros\n\nUna tarea dice qué hacías. Un logro dice qué cambió gracias a ti. Usa esta estructura: verbo de acción + qué hiciste + resultado.\n\n- Tarea: «Atendía clientes en el almacén.»\n- Logro: «Atendí a los clientes del almacén y resolví reclamos en el momento, lo que mejoró las calificaciones del servicio.»\n\n- Tarea: «Manejaba el inventario.»\n- Logro: «Organicé el inventario por categorías, lo que redujo el tiempo de búsqueda de productos.»\n\nSi tienes cifras reales, úsalas. Si no las tienes, no las inventes: describe el resultado con claridad.\n\n## Verbos útiles\n\nOrganicé, atendí, coordiné, vendí, apoyé, entregué, resolví, aprendí, mejoré, capacité.\n\n## Si has tenido trabajos informales\n\nVender por catálogo, hacer domicilios, cuidar un negocio familiar o trabajar por días también es experiencia. Preséntala con el mismo formato: qué hacías, con quién y qué resultados obtuviste. Lo importante es que sea verdad y que puedas explicarlo en una entrevista.",
+          "video": "",
+          "ejercicio": "Escoge tu último trabajo (formal o informal) y escribe tres logros con la fórmula verbo + qué hiciste + resultado. Luego escribe tu perfil profesional en máximo cuatro líneas."
+        },
+        {
+          "titulo": "Formación, habilidades y qué hacer si tienes poca experiencia",
+          "minutos": 10,
+          "contenido": "Si es tu primer empleo o llevas tiempo sin trabajar, tu hoja de vida puede ser igual de convincente. Solo cambia lo que pones en primer plano.\n\n## Formación académica\n\nEscribe el título o nivel alcanzado, la institución y el año. Ordena de lo más reciente a lo más antiguo. Si aún estudias, indícalo: «Técnico en logística, SENA (en curso)». Los cursos cortos cuentan cuando se relacionan con el cargo: servicio al cliente, manipulación de alimentos, Excel, atención en caja, etc. No pongas todos los cursos que hayas hecho; elige los más útiles para esa vacante.\n\n## Habilidades\n\nSepara dos tipos:\n\n- **Técnicas:** lo que sabes hacer, como manejar Excel, facturar, operar una caja registradora, conducir moto, cocinar o usar redes sociales para vender.\n- **Personales:** cómo trabajas, como puntualidad, trabajo en equipo o buena atención. Elige pocas y demuéstralas en la experiencia.\n\nEvita poner porcentajes o barras de nivel; no aportan información real. Mejor escribe «Excel: tablas, fórmulas básicas y filtros».\n\n## Si tienes poca o ninguna experiencia\n\nUsa lo que sí has hecho:\n\n- Voluntariados, trabajos en el colegio o la universidad, proyectos y prácticas.\n- Apoyo en negocios familiares o de tu comunidad.\n- Cursos, certificaciones y habilidades aprendidas por tu cuenta.\n- Logros concretos, como organizar un evento del barrio o ayudar a vender en una feria.\n\nEjemplo: «Apoyé durante dos años la tienda de mi familia: atención a clientes, control de caja y pedidos a proveedores.» Es corto, real y relevante para cargos de ventas o auxiliares.\n\n## Si tienes vacíos de tiempo\n\nNo los escondas con datos falsos. Puedes mencionar lo que hiciste en ese tiempo: cuidar a un familiar, estudiar, emprender un pequeño negocio o buscar empleo mientras te capacitabas. Prepárate para explicarlo con calma y sin pedir disculpas.\n\n## Referencias\n\nTen listas dos o tres personas que hablen bien de tu trabajo, como un jefe anterior o un profesor. Pídeles permiso antes de dar sus datos y avísales cuando creas que pueden recibir una llamada.",
+          "video": "",
+          "ejercicio": "Haz dos listas: una con tus habilidades técnicas y otra con las personales. Al lado de cada una escribe una situación real donde la hayas demostrado."
+        },
+        {
+          "titulo": "Adaptar, revisar y enviar tu hoja de vida",
+          "minutos": 10,
+          "contenido": "Tener una hoja de vida base es solo el primer paso. Para destacar, debes ajustarla a cada oferta y enviarla con cuidado.\n\n## Cómo adaptarla en 10 minutos\n\n- Lee la oferta completa y subraya funciones, requisitos y palabras clave.\n- Ajusta tu perfil para que mencione el cargo y lo que la empresa pide.\n- Ordena tus viñetas para que las más relacionadas con la vacante queden primero.\n- Usa en tu texto las mismas palabras de la oferta cuando sean ciertas. Si piden «atención al cliente» y tú escribiste «servicio al público», cambia a la palabra que ellos usan.\n\nNunca agregues algo que no sabes hacer solo porque la oferta lo pide.\n\n## Revisión final\n\nAntes de enviar, revisa esta lista:\n\n- Nombre, teléfono y correo sin errores.\n- Fechas coherentes entre trabajos.\n- Ortografía y tildes revisadas.\n- Mismo formato en todas las secciones.\n- Una sola página si es posible.\n- Archivo en PDF con nombre claro.\n\nLeerla en voz alta ayuda a detectar errores. También sirve pedirle a otra persona que la lea.\n\n## El mensaje de envío\n\nSi envías por correo, escribe un mensaje corto y respetuoso. Ejemplo:\n\nAsunto: Postulación auxiliar administrativo – Juan Pérez\n\nBuenos días. Me interesa la vacante de auxiliar administrativo que vi publicada recientemente. Adjunto mi hoja de vida y quedo atento a cualquier información adicional. Cordialmente, Juan Pérez, celular 300 000 0000.\n\nEl asunto claro y el mensaje breve facilitan que te respondan.\n\n## Después de enviar\n\nLlena un registro sencillo con la empresa, el cargo, la fecha y el medio por el que aplicaste. Así sabrás a quién llamar o escribir de nuevo y evitarás confundirte cuando te contacten.\n\nTambién recuerda contestar con amabilidad cuando te llamen, aunque sea un número desconocido. Muchas oportunidades se pierden por no atender el teléfono.\n\n## Para recordar\n\nUna hoja de vida no se termina nunca: se actualiza con cada logro, cada curso y cada experiencia nueva. Guarda tu versión base y crea copias adaptadas para cada oferta importante.",
+          "video": "",
+          "ejercicio": "Toma la oferta que elegiste en la primera lección y adapta tu perfil y tus tres logros para esa vacante. Revisa con la lista de verificación y guarda el archivo en PDF."
+        }
+      ],
+      "evaluacion": [
+        {
+          "pregunta": "¿Cuál es el objetivo principal de una hoja de vida?",
+          "opciones": [
+            "Contar toda tu historia personal y académica",
+            "Lograr que te llamen a una entrevista",
+            "Reemplazar la entrevista de trabajo",
+            "Mostrar todos los cursos que has hecho"
+          ],
+          "correcta": 1,
+          "explicacion": "La hoja de vida es una herramienta para conseguir la entrevista; por eso debe mostrar solo lo que ayuda a la vacante."
+        },
+        {
+          "pregunta": "¿Cuál de estas frases es un logro y no solo una tarea?",
+          "opciones": [
+            "Atendía clientes en el almacén",
+            "Era responsable de la caja",
+            "Organicé el inventario por categorías y reduje el tiempo de búsqueda de productos",
+            "Trabajé en ventas"
+          ],
+          "correcta": 2,
+          "explicacion": "Un logro combina una acción con un resultado visible; las demás opciones solo describen funciones."
+        },
+        {
+          "pregunta": "Si tienes poca experiencia laboral, ¿qué es lo más recomendable?",
+          "opciones": [
+            "Inventar un trabajo para llenar espacio",
+            "Dejar la hoja de vida casi en blanco",
+            "Incluir voluntariados, negocios familiares, cursos y proyectos reales",
+            "Poner solo tus datos personales"
+          ],
+          "correcta": 2,
+          "explicacion": "Las experiencias informales, los voluntariados y la formación relevante demuestran habilidades sin necesidad de inventar nada."
+        },
+        {
+          "pregunta": "¿Por qué conviene adaptar la hoja de vida a cada oferta?",
+          "opciones": [
+            "Porque así parece más larga",
+            "Porque la empresa necesita ver que respondes a lo que busca, incluyendo sus palabras clave",
+            "Porque es obligatorio por ley",
+            "Porque así se evita revisarla"
+          ],
+          "correcta": 1,
+          "explicacion": "Ajustar el perfil y los logros a la vacante muestra interés y ayuda a pasar los filtros por palabras clave."
+        },
+        {
+          "pregunta": "¿Cuál es un buen nombre para el archivo que vas a enviar?",
+          "opciones": [
+            "documento final 2 (copia)",
+            "hv nueva",
+            "HojaDeVida_AndreaRojas.pdf",
+            "scan0012"
+          ],
+          "correcta": 2,
+          "explicacion": "Un nombre claro con tu nombre y formato PDF facilita que quien recibe el archivo lo identifique y lo abra sin problemas."
+        }
+      ]
+    },
+    {
+      "id": "entrevista-de-trabajo-con-confianza",
+      "titulo": "Entrevista de trabajo con confianza",
+      "descripcion": "Prepárate para entrevistas presenciales o virtuales: investiga la empresa, responde con ejemplos reales, maneja preguntas difíciles y cierra con seguimiento.",
+      "categoria": "Entrevistas",
+      "nivel": "Básico",
+      "duracionMinutos": 60,
+      "paraQuien": "Personas que ya han sido llamadas a entrevista, o quieren estar listas para cuando las llamen.",
+      "lecciones": [
+        {
+          "titulo": "Antes de la entrevista: investiga y organízate",
+          "minutos": 10,
+          "contenido": "Casi toda la seguridad en una entrevista viene de la preparación. Las personas que llegan sabiendo a qué empresa van y qué cargo ocupan se notan de inmediato.\n\n## Qué investigar\n\n- **La empresa:** a qué se dedica, qué productos o servicios ofrece, dónde opera y cómo se presenta en su sitio web o redes sociales.\n- **El cargo:** funciones, requisitos y horarios que menciona la oferta.\n- **Quien te entrevista:** si conoces su nombre, averigua qué cargo tiene en la empresa.\n- **El lugar:** si es presencial, averigua la dirección exacta y cuánto tardas en llegar.\n\nNo necesitas memorizar datos. Con dos o tres cosas concretas basta para decir algo como: «Vi que trabajan con productos para el hogar y me interesó que estén abriendo nuevas sedes».\n\n## Logística\n\n- Confirma la cita por escrito o llamada un día antes, si es posible.\n- Planea llegar con tiempo de sobra. Es mejor esperar en la puerta que llegar corriendo.\n- Si es virtual, prueba tu conexión, cámara, micrófono y la aplicación que usarán.\n- Lleva copias de tu hoja de vida, tu documento de identidad y los certificados que puedan pedirte.\n- Carga tu celular y llévalo en silencio.\n\n## Tu repertorio de historias\n\nPrepara tres o cuatro ejemplos reales de tu vida laboral o personal: algo que lograste, algo que aprendiste de un error y una vez que trabajaste en equipo. Con esas historias podrás responder la mayoría de preguntas sin improvisar.\n\n## Prepara tus preguntas\n\nAl final casi siempre te preguntarán si tienes dudas. Ten listas dos o tres, por ejemplo:\n\n- ¿Cómo es un día normal en este cargo?\n- ¿Cómo es el proceso de inducción?\n- ¿Cuáles son los siguientes pasos de la selección?\n\n## Ejemplo\n\nCarlos va a una entrevista para cajero en un supermercado. Revisa dónde están las sedes, qué horarios maneja el cargo y practica en voz alta cómo presentarse. Cuando le preguntan por qué quiere trabajar allí, responde con calma, mencionando algo concreto de la empresa y su experiencia atendiendo público.",
+          "video": "",
+          "ejercicio": "Elige una empresa donde te gustaría trabajar. Escribe tres datos que encuentres sobre ella y dos preguntas que le harías a quien te entreviste."
+        },
+        {
+          "titulo": "Primera impresión: presentación y lenguaje corporal",
+          "minutos": 10,
+          "contenido": "La entrevista empieza desde que llegas, incluso antes de sentarte. Los primeros minutos influyen mucho en cómo te perciben, pero la buena noticia es que son cosas que se pueden practicar.\n\n## Presentación personal\n\nVístete de acuerdo con el cargo, un poco más formal de lo que usarías en el trabajo diario. Lo importante es que la ropa esté limpia, planchada y cómoda. No hace falta ropa costosa: hace falta cuidado. Procura que el cabello, las manos y el calzado estén aseados, y evita perfumes muy fuertes.\n\n## Saludo y actitud\n\n- Saluda con amabilidad a todas las personas que encuentres, incluida la recepción.\n- Da la mano con firmeza si la otra persona lo hace, mira a los ojos y sonríe.\n- Siéntate cuando te lo indiquen y mantén la espalda recta, sin cruzar los brazos con rigidez.\n- Habla con voz clara, a un ritmo tranquilo. Si te pones nervioso, respira antes de responder.\n- No interrumpas. Escucha la pregunta completa.\n\n## Los nervios\n\nSentir nervios es normal y no te descalifica. Puedes decirlo con naturalidad: «Estoy un poco nervioso porque me interesa mucho esta oportunidad». Antes de entrar, respira lento por la nariz y suelta el aire despacio. Lleva agua si lo permiten.\n\n## Entrevista virtual\n\n- Busca un lugar con buena luz frontal y poco ruido.\n- Coloca la cámara a la altura de los ojos.\n- Mira a la cámara cuando hables, no solo a la pantalla.\n- Cierra otras aplicaciones y silencia las notificaciones.\n- Ten a mano agua, papel, lápiz y tu hoja de vida.\n- Si se cae la conexión, escribe o llama de inmediato para avisar.\n\n## Lo que dices con el cuerpo\n\nTu postura comunica interés. Inclinarte levemente hacia adelante, asentir cuando te hablan y evitar mirar el celular dan señales de respeto y atención. Evita hablar mal de antiguos jefes o compañeros, porque suele dejar una mala impresión.\n\n## Un ensayo sencillo\n\nPractica frente a un espejo o grábate en video durante un minuto presentándote. Tal vez notes muletillas como «eh» o «o sea». Con dos o tres ensayos se reducen mucho.",
+          "video": "",
+          "ejercicio": "Grábate un minuto presentándote: nombre, a qué te dedicas y qué buscas. Míralo y anota una cosa que hiciste bien y una que mejorarías."
+        },
+        {
+          "titulo": "Responder con ejemplos: preguntas frecuentes y método SOAR",
+          "minutos": 10,
+          "contenido": "Quien entrevista quiere saber cómo has actuado en situaciones reales, porque eso predice cómo actuarás en el nuevo cargo. Por eso las respuestas con ejemplos funcionan mejor que las generales.\n\n## Preguntas muy frecuentes\n\n- Cuéntame sobre ti.\n- ¿Por qué quieres trabajar con nosotros?\n- ¿Cuáles son tus fortalezas y tus aspectos por mejorar?\n- Cuéntame de una situación difícil en el trabajo.\n- ¿Dónde te ves en unos años?\n\n## Cuéntame sobre ti\n\nNo cuentes tu vida entera. Estructúralo en tres partes: quién eres profesionalmente, qué has hecho que sea relevante para el cargo y qué te interesa de esta oportunidad. Dura entre uno y dos minutos.\n\nEjemplo: «Soy técnico en sistemas y llevo dos años apoyando el soporte de computadores en una papelería con servicio de internet. Aprendí a atender a personas con poca experiencia en tecnología y a resolver problemas con rapidez. Me interesa este cargo porque quiero seguir creciendo en soporte técnico.»\n\n## El método SOAR\n\nUsa estas cuatro partes para contar una experiencia:\n\n- **Situación:** ¿cuál era el contexto?\n- **Obstáculo:** ¿qué dificultad había?\n- **Acción:** ¿qué hiciste tú?\n- **Resultado:** ¿qué pasó gracias a eso?\n\nEjemplo: «En la tienda donde trabajaba (situación), un cliente llegó molesto porque su pedido se retrasó (obstáculo). Lo escuché, revisé el pedido, le expliqué qué había pasado y le ofrecí una entrega prioritaria (acción). El cliente se calmó y volvió a comprar (resultado).»\n\n## Fortalezas y debilidades\n\nElige fortalezas reales y respáldalas con un ejemplo. Para el aspecto por mejorar, elige algo real que no sea clave para el cargo y explica cómo lo trabajas: «Antes me costaba hablar en público; ahora me ofrezco a presentar en reuniones pequeñas para practicar».\n\n## Consejo\n\nEvita respuestas de una sola palabra y también las que duran más de dos minutos. Si no entiendes la pregunta, pide que la repitan. Es mejor pensar unos segundos que responder cualquier cosa.",
+          "video": "",
+          "ejercicio": "Escribe una historia con el método SOAR sobre un momento en el que resolviste un problema. Cuéntala en voz alta en máximo dos minutos."
+        },
+        {
+          "titulo": "Preguntas difíciles: salario, vacíos y salidas anteriores",
+          "minutos": 10,
+          "contenido": "Algunas preguntas generan incomodidad, pero tienen respuesta. La clave es ser honesto, breve y orientar la conversación hacia el futuro.\n\n## ¿Cuánto quieres ganar?\n\nAntes de la entrevista, averigua cuánto se suele pagar por ese cargo en tu ciudad, consultando ofertas similares o hablando con personas del sector. Ten claro tu mínimo necesario según tus gastos y un rango razonable.\n\nPuedes responder: «Me gustaría conocer el rango que maneja la empresa para este cargo. Según mi experiencia y lo que he visto en el mercado, me sentiría cómodo con un valor dentro de un rango que podamos conversar». Si te preguntan directamente, da un rango, no un único valor. No hables mal de tu sueldo anterior.\n\nTambién conviene preguntar por el tipo de contrato, horarios y prestaciones; son temas normales de la conversación.\n\n## ¿Por qué saliste de tu último trabajo?\n\nResponde con verdad, en pocas palabras y sin criticar. Ejemplos válidos:\n\n- «Terminó mi contrato y busco una oportunidad con más estabilidad.»\n- «Quería crecer y en esa empresa ya no había más posibilidades.»\n- «Fue una decisión de la empresa por reducción de personal. Aprendí mucho allí.»\n\nSi te despidieron por un error, puedes decirlo con madurez: qué pasó, qué aprendiste y cómo cambiaste.\n\n## Vacíos en la hoja de vida\n\nExplica en una o dos frases qué hiciste: estudiar, cuidar a un familiar, trabajar por cuenta propia o buscar empleo mientras te capacitabas. Luego cierra con tu interés actual: «Ahora estoy listo para volver a trabajar a tiempo completo».\n\n## Preguntas personales\n\nA veces preguntan por familia, hijos o planes personales. Si te sientes incómodo, puedes responder de forma breve y volver al tema laboral: «Mi situación personal está organizada y me permite cumplir con el horario». No estás obligado a dar detalles privados.\n\n## No sé la respuesta\n\nSi te preguntan algo técnico que no sabes, no inventes. Di: «No lo he hecho, pero aprendo rápido; por ejemplo, cuando…» y da un ejemplo real de aprendizaje.",
+          "video": "",
+          "ejercicio": "Escribe tu respuesta para dos preguntas: ¿por qué saliste de tu último trabajo? y ¿cuánto aspiras a ganar? Practícalas en voz alta hasta que suenen naturales."
+        },
+        {
+          "titulo": "Cierre de la entrevista y seguimiento",
+          "minutos": 10,
+          "contenido": "El final de la entrevista es tu última oportunidad de dejar una buena impresión. Y lo que haces después puede marcar la diferencia entre ser recordado o no.\n\n## Tus preguntas al final\n\nCuando te pregunten si tienes dudas, usa las que preparaste. Evita que tu primera pregunta sea solo sobre descansos o permisos; empieza por el trabajo y el proceso:\n\n- ¿Cuáles serían las prioridades en los primeros meses?\n- ¿Qué características tiene la persona que mejor se desempeña en este cargo?\n- ¿Cuándo esperan tomar una decisión?\n\n## Cierra con una frase clara\n\nAgradece el tiempo y reafirma tu interés. Ejemplo: «Gracias por la conversación. Me quedó más claro cómo es el cargo y me interesa mucho. Estoy disponible para continuar con el proceso». Despídete con un saludo cordial y, si te dieron la mano al inicio, hazlo también al final.\n\n## El mensaje de agradecimiento\n\nEnvía un correo o mensaje breve ese mismo día o al siguiente:\n\nAsunto: Gracias por la entrevista – Nombre Apellido\n\nBuenas tardes, [nombre]. Gracias por recibirme hoy y contarme sobre el cargo de [cargo]. Me pareció muy interesante [algo concreto de la conversación] y confirmo mi interés. Quedo atento a los siguientes pasos. Cordialmente, [tu nombre].\n\nEste gesto muestra interés y buenos modales.\n\n## Cuánto esperar\n\nSi te dieron una fecha, espera hasta que pase. Si no te dijeron nada, puedes escribir con respeto después de unos días hábiles para preguntar cómo va el proceso. Sé amable, no insistas todos los días.\n\n## Si no te seleccionan\n\nEs parte del proceso y no define tu valor. Pide, si es posible, retroalimentación breve: «¿Hay algo que pueda mejorar para futuras oportunidades?». Anota qué preguntas te costaron y practícalas.\n\n## Si te ofrecen el cargo\n\nPide los detalles por escrito: funciones, horario, tipo de contrato y fecha de inicio. Antes de aceptar, asegúrate de entender las condiciones. Lo ideal es que todo quede claro antes de empezar.",
+          "video": "",
+          "ejercicio": "Redacta un mensaje de agradecimiento para una entrevista imaginaria. Debe tener máximo cinco líneas e incluir un detalle concreto de la conversación."
+        }
+      ],
+      "evaluacion": [
+        {
+          "pregunta": "¿Qué es lo más útil de investigar antes de una entrevista?",
+          "opciones": [
+            "La vida personal de quien te entrevista",
+            "A qué se dedica la empresa y qué funciones tiene el cargo",
+            "Cuántas personas más están aplicando",
+            "Los chismes sobre los empleados"
+          ],
+          "correcta": 1,
+          "explicacion": "Conocer la empresa y el cargo te permite dar respuestas específicas y mostrar un interés genuino."
+        },
+        {
+          "pregunta": "¿Qué significa la sigla SOAR para responder preguntas de experiencia?",
+          "opciones": [
+            "Saludo, Oferta, Actitud, Respuesta",
+            "Situación, Obstáculo, Acción, Resultado",
+            "Salario, Objetivo, Aspiración, Rol",
+            "Sinceridad, Orden, Amabilidad, Respeto"
+          ],
+          "correcta": 1,
+          "explicacion": "El método SOAR ayuda a contar una experiencia real de forma ordenada, desde el contexto hasta el resultado."
+        },
+        {
+          "pregunta": "Si te preguntan por qué saliste de tu último trabajo, ¿qué es lo más recomendable?",
+          "opciones": [
+            "Hablar mal del jefe para justificarte",
+            "Inventar una historia distinta",
+            "Responder con honestidad, de forma breve y sin criticar",
+            "Negarte a contestar"
+          ],
+          "correcta": 2,
+          "explicacion": "Una respuesta honesta y respetuosa genera confianza; criticar o mentir puede dejar una mala impresión."
+        },
+        {
+          "pregunta": "Cuando te preguntan cuánto aspiras a ganar, ¿qué conviene hacer?",
+          "opciones": [
+            "Dar un rango razonable basado en lo que investigaste",
+            "Decir que no te importa el dinero",
+            "Dar un valor muy alto para negociar",
+            "Quedarte callado hasta que cambien de tema"
+          ],
+          "correcta": 0,
+          "explicacion": "Investigar el mercado y dar un rango muestra preparación y deja espacio para conversar."
+        },
+        {
+          "pregunta": "¿Cuál es una buena práctica después de la entrevista?",
+          "opciones": [
+            "No escribir nada para no parecer insistente",
+            "Llamar varias veces al día para preguntar el resultado",
+            "Enviar un mensaje corto de agradecimiento y confirmar tu interés",
+            "Publicar en redes lo que te preguntaron"
+          ],
+          "correcta": 2,
+          "explicacion": "Un mensaje breve de agradecimiento muestra educación e interés, sin presionar."
+        }
+      ]
+    },
+    {
+      "id": "busqueda-de-empleo-con-estrategia",
+      "titulo": "Búsqueda de empleo con estrategia",
+      "descripcion": "Organiza tu búsqueda: define qué buscas, explora empresas y contactos, cuida tu presencia digital y evita estafas. Un método simple para postularte con orden.",
+      "categoria": "Búsqueda de empleo",
+      "nivel": "Básico",
+      "duracionMinutos": 60,
+      "paraQuien": "Personas que llevan tiempo enviando hojas de vida sin respuesta o que no saben por dónde empezar a buscar empleo.",
+      "lecciones": [
+        {
+          "titulo": "Define qué buscas antes de postularte",
+          "minutos": 10,
+          "contenido": "Muchas personas envían su hoja de vida a todas las ofertas que ven y se frustran porque no reciben respuesta. Buscar empleo funciona mejor cuando sabes qué quieres y qué puedes ofrecer.\n\n## Tres preguntas clave\n\n- **¿Qué sé hacer?** Revisa tu experiencia, estudios y habilidades, incluyendo las informales.\n- **¿Qué me gustaría hacer?** Piensa en tareas que disfrutas o en las que aprendes rápido.\n- **¿Qué condiciones necesito?** Horario, ubicación, tiempo de desplazamiento, tipo de contrato y un ingreso mínimo para cubrir tus gastos.\n\nCon esas respuestas, elige uno o dos cargos objetivo. Por ejemplo: auxiliar administrativo y asistente de servicio al cliente. Tener pocos objetivos te permite adaptar mejor tu hoja de vida.\n\n## Cargos cercanos\n\nPiensa en cargos relacionados con lo que ya haces. Si has trabajado como mesero, puedes aplicar a atención al cliente, ventas en tienda o apoyo en eventos, porque comparten habilidades de trato con personas, rapidez y trabajo bajo presión.\n\n## Condiciones y límites\n\nAnota cuáles son tus condiciones indispensables y cuáles negociables. Por ejemplo, puedes aceptar un cargo con menor ingreso si te ofrece formación o estabilidad, siempre que cubras tus necesidades básicas. Pensar esto antes evita decisiones apresuradas cuando llega una oferta.\n\n## Tu meta semanal\n\nFíjate metas realistas basadas en acciones y no en resultados que no controlas. Ejemplo:\n\n- Enviar un número razonable de postulaciones bien adaptadas.\n- Contactar a algunas personas de tu red.\n- Mejorar una parte de tu hoja de vida.\n- Practicar una entrevista.\n\nEstas acciones están bajo tu control y mantienen tu motivación incluso cuando todavía no llega la respuesta.\n\n## Ejemplo\n\nMarcela ha trabajado en una panadería y ayudando en un salón de belleza. Se da cuenta de que lo que mejor hace es atender personas. Define como objetivos cargos de servicio al cliente y ventas de mostrador, y aplica solo a ofertas relacionadas, adaptando su hoja de vida a cada una.",
+          "video": "",
+          "ejercicio": "Completa estas frases: «Sé hacer…», «Me gustaría trabajar en…» y «Necesito que el trabajo cumpla con…». Luego elige dos cargos objetivo."
+        },
+        {
+          "titulo": "Dónde buscar: empresas, calle y comunidad",
+          "minutos": 10,
+          "contenido": "Las vacantes no aparecen en un solo lugar. Quien combina varias formas de buscar tiene más posibilidades que quien depende de una sola.\n\n## Empieza por las empresas\n\nHaz una lista de diez empresas de tu ciudad que te interesen, relacionadas con tus cargos objetivo. Para cada una, busca su sitio web y revisa si tiene una sección llamada «Trabaja con nosotros» o «Empleo». Muchas también anuncian sus vacantes en sus redes sociales: seguir sus páginas te permite enterarte cuando abren procesos.\n\nSi no encuentras vacantes publicadas, mira si tienen un correo o un formulario para recibir hojas de vida. Enviar una postulación espontánea, con un mensaje corto y respetuoso, puede ponerte en el radar para cuando surja una necesidad.\n\n## Haz un mapa de tu zona\n\nPiensa en los lugares cercanos donde se contrata personal: zonas industriales, centros comerciales, clínicas, colegios, restaurantes, talleres, bodegas, supermercados, hoteles. Camina o recorre esas zonas con tu hoja de vida impresa y pregunta con amabilidad a quién puedes entregarla.\n\n## Búsqueda presencial\n\nEn comercio, restaurantes y servicios, preguntar directamente suele abrir puertas. Preséntate con ropa limpia y ordenada, saluda, di en una frase qué sabes hacer y pregunta si hay vacantes o si pueden guardar tu hoja de vida. Agradece siempre, aunque la respuesta sea negativa.\n\n## Avisos, ferias y jornadas\n\nPresta atención a los avisos en vitrinas y puertas de negocios. Averigua si la alcaldía de tu ciudad, universidades o instituciones de formación organizan ferias o jornadas de empleo. Si estudiaste en alguna institución, pregunta si mantienen contacto con empresas que buscan personal.\n\n## Mensajes que circulan en cadena\n\nA veces recibes ofertas por mensajes reenviados. Úsalos solo como pista: verifica que la empresa exista, que los datos coincidan y que no te pidan dinero ni información sensible. No te dejes llevar por la urgencia del mensaje.\n\n## Ejemplo de rutina\n\n- Lunes: revisar las páginas de tus empresas de interés y postular donde encajes.\n- Miércoles: recorrer una zona de tu mapa y dejar hojas de vida.\n- Viernes: actualizar tu registro y contactar a personas de tu red.\n\nUna rutina corta y constante rinde más que pasar horas desordenadas un solo día.",
+          "video": "",
+          "ejercicio": "Escribe una lista de diez empresas de tu ciudad que quieras seguir y busca el sitio web o la página de cada una. Luego marca en un mapa o libreta una zona que puedas recorrer esta semana."
+        },
+        {
+          "titulo": "Tu presencia digital: correo, redes y mensajes",
+          "minutos": 10,
+          "contenido": "Hoy, muchas empresas buscan información sobre los candidatos en internet. Cuidar tu presencia digital no es tener muchas redes: es evitar que algo te perjudique y mostrar lo mejor de ti.\n\n## Busca tu nombre\n\nEscribe tu nombre completo en un buscador y mira qué aparece. Revisa publicaciones, fotos y comentarios antiguos en tus redes personales. Si algo puede dar una mala imagen, elimínalo o ponlo en privado. No tienes que ocultar quién eres, pero sí cuidar lo que cualquiera puede ver.\n\n## Detalles que se notan\n\n- Una foto de perfil clara y respetuosa en WhatsApp y en tus redes.\n- Un nombre de usuario sencillo, preferiblemente tu nombre y apellido.\n- Un estado o descripción neutral, sin frases ofensivas ni quejas sobre empleos anteriores.\n- Un buzón de voz con un saludo cordial.\n\n## Correo profesional\n\nUsa un solo correo para tu búsqueda y revísalo todos los días, incluida la carpeta de spam, porque a veces allí llegan respuestas de empresas. Si quieres, agrega una firma sencilla al final con tu nombre y tu celular.\n\n## WhatsApp y llamadas\n\nMuchos procesos empiezan con un mensaje o una llamada. Responde con cortesía:\n\n- «Buenos días, habla [nombre]. Con gusto, ¿en qué le puedo colaborar?»\n- Si te escriben por mensaje, responde con saludo, sin audios largos ni emojis excesivos.\n- Si no puedes atender, devuelve la llamada o responde pronto y con amabilidad.\n\n## Presentarte en una frase\n\nTen lista una frase corta que diga quién eres y qué buscas. Ejemplo: «Soy auxiliar administrativa con experiencia en facturación y atención al cliente, y busco una oportunidad en la que pueda seguir aprendiendo». La usarás en mensajes, llamadas y conversaciones.\n\n## Mensajes a contactos\n\nCuando escribas a alguien para pedir orientación, sé breve y específico. Ejemplo:\n\n«Hola, [nombre]. Soy [tu nombre], trabajé contigo en [lugar]. Estoy buscando oportunidades como auxiliar de bodega. Si sabes de alguna vacante o puedes orientarme, te lo agradezco mucho. Te comparto mi hoja de vida.»\n\nEl mensaje explica quién eres, qué buscas y qué le pides sin presionar.",
+          "video": "",
+          "ejercicio": "Busca tu nombre en internet y anota una cosa que ajustarías. Escribe además tu frase de presentación y un mensaje de WhatsApp de cuatro líneas para pedir orientación laboral a un conocido."
+        },
+        {
+          "titulo": "El poder de tus contactos",
+          "minutos": 10,
+          "contenido": "Muchas oportunidades llegan por recomendación o porque alguien supo a tiempo que estabas buscando trabajo. No se trata de pedir favores, sino de hacer visible lo que sabes hacer.\n\n## Tu red ya existe\n\nHaz una lista de personas que conoces:\n\n- Familiares y amigos que trabajan en distintas empresas.\n- Antiguos jefes y compañeros.\n- Profesores y compañeros de estudio.\n- Vecinos, personas de tu comunidad o iglesia, clientes habituales.\n- Personas de grupos deportivos o cursos.\n\nNo todos podrán darte un empleo, pero cualquiera puede conocer a alguien que contrata.\n\n## Cómo pedir ayuda\n\nEvita decir solo «si sabes de algo, avísame». Es mejor ser específico: «Estoy buscando trabajo como auxiliar de cocina o ayudante de panadería en el sur de la ciudad. Tengo experiencia de dos años en restaurante. ¿Conoces a alguien con quien pueda hablar?».\n\nMientras más claro sea tu pedido, más fácil es que alguien piense en ti.\n\n## Conversaciones de orientación\n\nPuedes pedirle a alguien que trabaje en tu sector unos minutos para preguntarle cómo es el trabajo, qué buscan las empresas y qué recomienda. No pidas empleo directamente en esa conversación; pide consejo. Al final, agradece y pregunta: «¿Hay alguien más con quien me recomiende hablar?».\n\n## Da antes de pedir\n\nCompartir una oferta que no te sirve a ti pero sí a otra persona, felicitar un logro o enviar un agradecimiento fortalece las relaciones. Las redes funcionan en ambos sentidos.\n\n## Agradece y comunica\n\nSi alguien te recomienda o te da un dato, cuéntale cómo te fue, incluso si no resultó. Esa persona seguirá pensando en ti.\n\n## Ejemplo\n\nDaniel buscaba trabajo en logística. Escribió a cinco excompañeros y a un profesor con un mensaje claro. Uno de ellos le comentó de una vacante en su empresa y lo recomendó con el área de selección. Daniel igual pasó por el proceso normal, pero llegó con un voto de confianza.",
+          "video": "",
+          "ejercicio": "Haz una lista de diez personas de tu entorno a quienes puedas escribir esta semana. Envía mensajes personalizados a al menos tres de ellas."
+        },
+        {
+          "titulo": "Organízate, cuídate de estafas y no te desanimes",
+          "minutos": 10,
+          "contenido": "Buscar empleo puede ser largo y cansador. Un sistema sencillo y algunas precauciones te ayudan a avanzar con tranquilidad.\n\n## Un registro simple\n\nUsa una libreta o una hoja de cálculo con estas columnas:\n\n- Empresa y cargo.\n- Fecha y medio de postulación.\n- Contacto (nombre, teléfono o correo).\n- Estado: enviada, en entrevista, esperando respuesta, cerrada.\n- Próximo paso y fecha.\n\nAsí sabrás cuándo hacer seguimiento y no te confundirás cuando te llamen de una empresa a la que aplicaste hace semanas.\n\n## Seguimiento\n\nSi pasaron algunos días hábiles sin respuesta, puedes escribir un mensaje corto y cordial: «Buenas tardes, apliqué al cargo de [cargo] el día [fecha] y quisiera saber si hay novedades en el proceso. Gracias por su tiempo». Una sola vez es suficiente; insistir demasiado puede perjudicarte.\n\n## Señales de alerta de estafas\n\nAlgunas ofertas falsas buscan dinero o datos personales. Desconfía si:\n\n- Te piden pagar por inscribirte, por uniforme, por exámenes o por «reservar» el cargo.\n- Prometen ingresos altos, fáciles y rápidos sin experiencia ni proceso de selección.\n- Solo se comunican por mensajería y evitan dar datos de la empresa o una dirección verificable.\n- Te piden claves, códigos que llegan a tu celular o datos bancarios antes de contratarte.\n- Te presionan para decidir inmediatamente.\n\nAntes de ir a una entrevista, verifica que la empresa exista, busca su sitio web y avisa a alguien de confianza dónde estarás. Una empresa seria no cobra por darte trabajo.\n\n## Cuida tu ánimo\n\nLos rechazos y los silencios son parte de la búsqueda y no dicen nada sobre tu valor. Mantén horarios, descansa, haz ejercicio y conversa con alguien. Celebra los avances pequeños: una entrevista lograda, una hoja de vida mejorada, un contacto nuevo.\n\n## Mientras llega el empleo\n\nAprovecha para formarte con cursos gratuitos, hacer voluntariados o generar ingresos temporales. Todo eso suma a tu experiencia y mantiene activa tu rutina.",
+          "video": "",
+          "ejercicio": "Crea tu registro de postulaciones con las columnas de la lección y anota las tres primeras ofertas a las que vas a aplicar. Escribe también tres señales de alerta que recordarás siempre."
+        }
+      ],
+      "evaluacion": [
+        {
+          "pregunta": "¿Por qué conviene definir uno o dos cargos objetivo antes de postularte?",
+          "opciones": [
+            "Porque así aplicas a menos ofertas y te cansas menos",
+            "Porque puedes adaptar mejor tu hoja de vida y tu búsqueda",
+            "Porque las empresas lo exigen",
+            "Porque solo se permite buscar dos cargos"
+          ],
+          "correcta": 1,
+          "explicacion": "Tener objetivos claros te permite ajustar tu hoja de vida y dirigir tus esfuerzos a ofertas que realmente encajan contigo."
+        },
+        {
+          "pregunta": "¿Cuál de estas situaciones es una señal de alerta de una posible estafa laboral?",
+          "opciones": [
+            "La empresa tiene una dirección y un sitio web verificables",
+            "Te citan a una entrevista con fecha y hora",
+            "Te piden pagar por inscribirte o por reservar el cargo",
+            "Te piden tu hoja de vida por correo"
+          ],
+          "correcta": 2,
+          "explicacion": "Una empresa seria no cobra por darte un empleo. Pedir pagos es una señal de fraude."
+        },
+        {
+          "pregunta": "¿Qué es mejor al pedir ayuda a un contacto para buscar trabajo?",
+          "opciones": [
+            "Decir solo «avísame si sabes de algo»",
+            "Explicar qué cargo buscas, tu experiencia y qué tipo de ayuda necesitas",
+            "Pedirle directamente que te contrate",
+            "No decir nada para no molestar"
+          ],
+          "correcta": 1,
+          "explicacion": "Un pedido claro y específico facilita que la otra persona piense en oportunidades concretas para ti."
+        },
+        {
+          "pregunta": "¿Para qué sirve llevar un registro de tus postulaciones?",
+          "opciones": [
+            "Para presumir cuántas hojas de vida enviaste",
+            "Para saber a qué empresas aplicaste, cuándo y cuándo hacer seguimiento",
+            "Para reemplazar la hoja de vida",
+            "No sirve; es una pérdida de tiempo"
+          ],
+          "correcta": 1,
+          "explicacion": "El registro te mantiene organizado, evita confusiones cuando te llaman y te indica cuándo hacer seguimiento."
+        },
+        {
+          "pregunta": "¿Cuál es una buena práctica con tu correo electrónico durante la búsqueda de empleo?",
+          "opciones": [
+            "Usar un apodo gracioso para destacar",
+            "Revisarlo a diario, incluida la carpeta de spam",
+            "Usar varios correos distintos en cada postulación",
+            "Revisarlo una vez al mes"
+          ],
+          "correcta": 1,
+          "explicacion": "Las respuestas de las empresas pueden llegar en cualquier momento, incluso al spam, por eso conviene revisar a diario."
+        }
+      ]
+    }
+  ]
+}

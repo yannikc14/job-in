@@ -415,6 +415,38 @@ footer.pub-footer{ border-top:1px solid var(--border); padding:44px 0 28px; marg
   .cand-row{ grid-template-columns:1fr; text-align:left; }
   .wrap{ padding:0 18px; }
 }
+
+/* ---------- Cursos ---------- */
+.course-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:16px; }
+.course-card{ padding:22px; cursor:pointer; display:flex; flex-direction:column; gap:10px; transition:border-color .15s ease, transform .15s ease; }
+.course-card:hover{ border-color:var(--accent); transform:translateY(-2px); }
+.course-card h3{ font-size:1.12rem; line-height:1.25; }
+.course-meta{ display:flex; flex-wrap:wrap; gap:6px 14px; color:var(--gray); font-size:0.8rem; }
+.progress-bar{ height:7px; background:var(--bg-1); border-radius:6px; overflow:hidden; border:1px solid var(--border); }
+.progress-bar span{ display:block; height:100%; background:var(--accent); border-radius:6px; transition:width .3s ease; }
+.course-chip{ border:1px solid var(--border-strong); background:transparent; color:var(--gray); padding:7px 14px; border-radius:999px; font-size:0.84rem; cursor:pointer; }
+.course-chip:hover{ border-color:var(--accent); color:var(--white); }
+.course-chip.on{ border-color:var(--accent); color:var(--accent); background:var(--accent-dim); }
+.lesson-body{ line-height:1.8; color:var(--gray); font-size:0.95rem; max-width:740px; }
+.lesson-body p{ margin:0 0 14px; }
+.lesson-body ul{ margin:0 0 14px 20px; display:flex; flex-direction:column; gap:6px; }
+.lesson-body strong{ color:var(--white); }
+.lesson-body .md-h{ font-family:var(--font-d); color:var(--white); font-size:1.1rem; margin:26px 0 10px; }
+.exercise-box{ border:1px solid var(--accent); background:var(--accent-dim); border-radius:12px; padding:18px 20px; margin:26px 0; max-width:740px; }
+.exercise-box strong{ color:var(--accent); }
+.lesson-row{ display:flex; align-items:center; gap:12px; padding:13px 4px; border-bottom:1px solid var(--border); cursor:pointer; }
+.lesson-row:last-child{ border-bottom:none; }
+.lesson-row:hover .lesson-title{ color:var(--accent); }
+.lesson-num{ width:28px; height:28px; border-radius:50%; border:1px solid var(--border-strong); display:flex; align-items:center; justify-content:center; font-size:0.78rem; flex-shrink:0; }
+.lesson-num.done{ background:var(--accent); color:#05080A; border-color:var(--accent); }
+.quiz-q{ padding:20px; margin-bottom:14px; }
+.quiz-opt{ display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--border); border-radius:9px; margin-top:8px; cursor:pointer; font-size:0.9rem; color:var(--gray); }
+.quiz-opt:hover{ border-color:var(--accent); }
+.quiz-opt input{ accent-color:var(--accent); margin-top:3px; }
+.quiz-opt.right{ border-color:#5CCE7C; background:rgba(92,206,124,0.1); color:var(--white); }
+.quiz-opt.wrong{ border-color:var(--danger); background:rgba(255,107,107,0.08); }
+.video-wrap{ position:relative; padding-top:56.25%; border-radius:12px; overflow:hidden; margin-bottom:22px; border:1px solid var(--border); max-width:740px; }
+.video-wrap iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; }
 </style>
 <!-- Supabase JS SDK — used only if you fill in SUPABASE_CONFIG below in the script -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -654,7 +686,8 @@ function seedDB(){
       { userId:'cand1', id:'n4', text:'PixelMind Studio te envió un mensaje.', fecha:days(1), leida:true },
       { userId:'cand1', id:'n5', text:'Tu perfil tiene 85% de completitud. Complétalo para mejorar tu Match.', fecha:days(7), leida:true }
     ],
-    savedJobs: { cand1: ['job6'] }
+    savedJobs: { cand1: ['job6'] },
+    progress: []
   };
 }
 
@@ -666,7 +699,7 @@ var syncSnap = {};
 
 function genId(prefix){ return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function fmtDate(iso){ try{ return new Date(iso).toLocaleDateString('es-CO',{day:'2-digit',month:'short'}); }catch(e){ return ''; } }
-function emptyRemoteDB(){ return {session:null, isAdmin:false, candidates:[], companies:[], jobs:[], applications:[], threads:[], notifications:[], savedJobs:{}}; }
+function emptyRemoteDB(){ return {session:null, isAdmin:false, candidates:[], companies:[], jobs:[], applications:[], threads:[], notifications:[], savedJobs:{}, progress:[]}; }
 
 /* ---------- Modo local (sin Supabase): todo en localStorage, como antes ---------- */
 function loadDB(cb){
@@ -676,6 +709,7 @@ function loadDB(cb){
       db = raw ? JSON.parse(raw) : seedDB();
     }catch(e){ db = seedDB(); }
     db.session = null;
+    if(!db.progress) db.progress = [];
     cb && cb();
     return;
   }
@@ -721,9 +755,12 @@ var SYNC_DEFS = {
   applications: { rows:function(){ return db.applications.map(appRow); } },
   threads:      { rows:function(){ return db.threads.map(threadRow); } },
   messages:     { insertOnly:true, rows:function(){ var out=[]; db.threads.forEach(function(t){ (t.messages||[]).forEach(function(m){ if(!m.id) m.id=genId('m'); out.push({id:m.id, thread_id:t.id, sender_role:m.from, body:m.text}); }); }); return out; } },
-  notifications:{ rows:function(){ return db.notifications.map(notifRow); } }
+  notifications:{ rows:function(){ return db.notifications.map(notifRow); } },
+  progress:     { table:'course_progress', rows:function(){ return (progressUnavailable || !db.session) ? [] : (db.progress||[]).filter(function(p){ return p.userId===db.session.id; }).map(progRow); } }
 };
-var SYNC_ORDER = ['candidates','companies','jobs','applications','threads','messages','notifications'];
+function progRow(o){ return {id:o.id, user_id:o.userId, course_id:o.courseId, data:stripKeys(o,['id','userId','courseId'])}; }
+var progressUnavailable = false;
+var SYNC_ORDER = ['candidates','companies','jobs','applications','threads','messages','notifications','progress'];
 
 function savedPairs(){
   var out = {};
@@ -773,12 +810,12 @@ async function doSync(){
       });
       if(!def.insertOnly) Object.keys(snap).forEach(function(id){ if(!cur[id]) del.push(id); });
       if(up.length){
-        var res = def.insertOnly ? await sb.from(name).insert(up) : await sb.from(name).upsert(up);
+        var res = def.insertOnly ? await sb.from(def.table||name).insert(up) : await sb.from(def.table||name).upsert(up);
         if(res.error) throw new Error(name + ': ' + res.error.message);
         up.forEach(function(r){ snap[r.id] = strs[r.id]; });
       }
       if(del.length){
-        var res2 = await sb.from(name).delete().in('id', del);
+        var res2 = await sb.from(def.table||name).delete().in('id', del);
         if(res2.error) throw new Error(name + ': ' + res2.error.message);
         del.forEach(function(id){ delete snap[id]; });
       }
@@ -823,7 +860,7 @@ async function refreshData(scope, uidOverride){
   var uid = uidOverride || (db.session ? db.session.id : null), admin = !!db.isAdmin, needJobs = (scope==='all');
   var tbl = function(t, col, asc, limit){ var b = sb.from(t).select('*'); if(col) b = b.order(col,{ascending:!!asc}); if(limit) b = b.limit(limit); return b; };
   var threadsQ = tbl('threads');   /* la base de datos ya limita qué conversaciones puede ver cada persona */
-  var calls = [ tbl('candidates', null, false, admin ? 1000 : 0), tbl('applications','created_at',false,1000), threadsQ, tbl('notifications','created_at',false,200), tbl('saved_jobs') ];
+  var calls = [ tbl('candidates', null, false, admin ? 1000 : 0), tbl('applications','created_at',false,1000), threadsQ, tbl('notifications','created_at',false,200), tbl('saved_jobs'), (uid ? tbl('course_progress') : Promise.resolve({data:[],error:null})) ];
   if(needJobs){
     calls.push(tbl('jobs','created_at',false, admin ? 1000 : JOBS_PAGE));
     calls.push(uid ? sb.from('jobs').select('*').eq('company_id', uid) : Promise.resolve({data:[], error:null}));
@@ -831,9 +868,9 @@ async function refreshData(scope, uidOverride){
   }
   if(!admin) calls.push(tbl('messages','created_at',false,600));
   var res = await Promise.all(calls);
-  var bad = res.filter(function(r){ return r.error; })[0];
+  var bad = res.filter(function(r,i){ return r.error && i!==5; })[0];   /* la posición 5 es el progreso de cursos: si falla, no es grave */
   if(bad){ remoteError = bad.error.message || 'error desconocido'; return false; }
-  var k = 0, rCand = res[k++], rApps = res[k++], rThreads = res[k++], rNotif = res[k++], rSaved = res[k++];
+  var k = 0, rCand = res[k++], rApps = res[k++], rThreads = res[k++], rNotif = res[k++], rSaved = res[k++], rProg = res[k++];
   var rJobs = null, rMine = null, rAllComp = null, rMsgs = null;
   if(needJobs){ rJobs = res[k++]; rMine = res[k++]; if(admin) rAllComp = res[k++]; }
   if(!admin) rMsgs = res[k++];
@@ -856,6 +893,13 @@ async function refreshData(scope, uidOverride){
   n.threads = (rThreads.data||[]).map(function(r){ var t = {id:r.id, companyId:r.company_id, candidateId:r.candidate_id, messages:[]}; tmap[r.id] = t; return t; });
   msgRows.forEach(function(m){ var t = tmap[m.thread_id]; if(t) t.messages.push({id:m.id, from:m.sender_role, text:m.body, fecha:fmtDate(m.created_at)}); });
   n.notifications = (rNotif.data||[]).map(function(r){ var d = r.data || {}; return {id:r.id, userId:r.user_id, text:d.text||'', leida:!!d.leida, fecha:fmtDate(r.created_at)}; });
+  if(rProg.error){
+    progressUnavailable = true;
+    try{ n.progress = uid ? JSON.parse(window.localStorage.getItem('jobin_prog_'+uid)||'[]') : []; }catch(e){ n.progress = []; }
+  } else {
+    progressUnavailable = false;
+    n.progress = (rProg.data||[]).map(function(r){ return Object.assign({id:r.id, userId:r.user_id, courseId:r.course_id}, r.data); });
+  }
   (rSaved.data||[]).forEach(function(r){ (n.savedJobs[r.candidate_id] = n.savedJobs[r.candidate_id] || []).push(r.job_id); });
 
   if(needJobs){
@@ -1328,7 +1372,8 @@ function render(){
   else if(seg==='terms') html = layoutPublic(viewTerms());
   else if(seg==='privacy') html = layoutPublic(viewPrivacy());
   else if(seg==='companies') html = layoutPublic(viewCompanies());
-  else if(seg==='resources') html = layoutPublic(viewResources());
+  else if(seg==='resources') html = layoutCourses(viewResources());
+  else if(seg==='course') html = layoutCourses(viewCourse(parts[1], parts[2]));
   else if(seg==='about') html = layoutPublic(viewAbout());
   else if(seg==='dashboard'){ if(!requireAuth('candidate'))return; html = layoutApp('candidate','dashboard', viewDashboard()); }
   else if(seg==='recommendations'){ if(!requireAuth('candidate'))return; html = layoutApp('candidate','recommendations', viewRecommendations()); }
@@ -1394,7 +1439,7 @@ function layoutPublic(content){
         navLink('#/','Inicio',seg,'')+
         navLink('#/jobs','Ofertas',seg,'jobs')+
         navLink('#/companies','Empresas',seg,'companies')+
-        navLink('#/resources','Recursos',seg,'resources')+
+        navLink('#/resources','Cursos',seg,'resources')+
         navLink('#/about','Sobre nosotros',seg,'about')+
       '</nav>'+
       '<div class="pub-actions">'+
@@ -1417,7 +1462,7 @@ function layoutPublic(content){
       '<a class="side-link" href="#/" onclick="closeDrawers()">'+icon('home')+' Inicio</a>'+
       '<a class="side-link" href="#/jobs" onclick="closeDrawers()">'+icon('briefcase')+' Ofertas</a>'+
       '<a class="side-link" href="#/companies" onclick="closeDrawers()">'+icon('building')+' Empresas</a>'+
-      '<a class="side-link" href="#/resources" onclick="closeDrawers()">'+icon('doc')+' Recursos</a>'+
+      '<a class="side-link" href="#/resources" onclick="closeDrawers()">'+icon('doc')+' Cursos</a>'+
       '<a class="side-link" href="#/about" onclick="closeDrawers()">'+icon('globe')+' Sobre nosotros</a>'+
     '</div>'+
     '<div class="side-foot">'+
@@ -1433,7 +1478,7 @@ function footerHTML(){
   return '<footer class="pub-footer"><div class="wrap">'+
     '<div class="foot-grid">'+
       '<div><img class="logo-img" src="'+LOGO_FULL+'" alt="Job-In" style="margin-bottom:12px;"><p class="muted" style="max-width:32ch;font-size:0.86rem;">Tu próximo éxito laboral se encuentra aquí.</p></div>'+
-      '<div><h5>Plataforma</h5><a href="#/jobs">Buscar empleo</a><a href="#/companies">Empresas</a><a href="#/register">Publicar oferta</a><a href="#/resources">Recursos</a></div>'+
+      '<div><h5>Plataforma</h5><a href="#/jobs">Buscar empleo</a><a href="#/companies">Empresas</a><a href="#/register">Publicar oferta</a><a href="#/resources">Cursos</a></div>'+
       '<div><h5>Cuenta</h5><a href="#/login">Iniciar sesión</a><a href="#/register">Crear cuenta</a><a href="#/about">Sobre nosotros</a></div>'+
       '<div><h5>Legal</h5><a href="#/terms">Términos de uso</a><a href="#/privacy">Privacidad</a><a href="#/admin">Panel administrativo</a></div>'+
     '</div>'+
@@ -1452,7 +1497,7 @@ function layoutAuth(content){
 function sideNavCandidate(active){
   var items = [
     ['dashboard','home','Inicio'],['candidate-search','search','Buscar empleos'],['applications','doc','Mis postulaciones'],
-    ['cv','layers','Mi hoja de vida'],['recommendations','star','Recomendaciones'],['preferences','settings','Preferencias'],
+    ['cv','layers','Mi hoja de vida'],['recommendations','star','Recomendaciones'],['resources','doc','Cursos'],['preferences','settings','Preferencias'],
     ['messages','message','Mensajes'+awaitingSuffix()],['notifications','bell','Notificaciones'],['settings','settings','Configuración']
   ];
   return items.map(function(it){
@@ -1604,19 +1649,228 @@ function viewCompanies(){
     }).join('')+'</div>'+
   '</section>';
 }
-function viewResources(){
-  var arts = [
-    ['Cómo escribir una hoja de vida perfecta','Consejos prácticos y ejemplos para destacar tu experiencia.'],
-    ['Prepárate para tu próxima entrevista','Aprende a responder con seguridad las preguntas más comunes.'],
-    ['Habilidades más pedidas en 2026','Descubre qué está buscando el mercado laboral hoy.'],
-    ['Cómo negociar tu salario','Estrategias para conversar sobre remuneración sin nervios.']
-  ];
-  return '<section class="wrap section"><div class="section-head"><h2>Recursos para tu búsqueda</h2></div>'+
-  '<div class="grid2">'+arts.map(function(a){return '<div class="glass" style="padding:22px;">'+
-    '<div class="job-logo" style="margin-bottom:14px;">'+icon('doc',20)+'</div>'+
-    '<div style="font-weight:700;font-family:var(--font-d);margin-bottom:6px;">'+esc(a[0])+'</div>'+
-    '<p class="muted" style="font-size:0.87rem;">'+esc(a[1])+'</p></div>';}).join('')+'</div></section>';
+var COURSES = [{"id":"hoja-de-vida-que-abre-puertas","titulo":"Hoja de vida que abre puertas","descripcion":"Aprende a armar una hoja de vida clara, honesta y adaptada a cada vacante, incluso si tienes poca experiencia. Sal con un documento listo para enviar.","categoria":"Hoja de vida","nivel":"Básico","duracionMinutos":60,"paraQuien":"Personas que van a crear o mejorar su hoja de vida para aplicar a ofertas de trabajo en Colombia.","lecciones":[{"titulo":"Qué es una hoja de vida y qué busca quien la lee","minutos":10,"contenido":"Tu hoja de vida es un documento de venta: su único trabajo es lograr que alguien te llame para una entrevista. No tiene que contar toda tu historia, solo la parte que le sirve a la empresa para decidir que vale la pena conocerte.\n\n## Cómo la leen realmente\n\nQuien selecciona personal suele revisar muchas hojas de vida en poco tiempo. Por eso, los primeros segundos son decisivos. Mira rápido tu nombre, tu perfil, tus últimos trabajos y tu formación. Si no encuentra pronto lo que busca, pasa a la siguiente. Además, en varias empresas las hojas de vida pasan primero por un sistema que filtra por palabras clave relacionadas con el cargo.\n\n## Qué busca quien selecciona\n\n- Que cumplas los requisitos básicos de la vacante.\n- Que tu información sea clara y fácil de verificar.\n- Que muestres resultados, no solo una lista de tareas.\n- Que seas una persona cuidadosa: sin errores de ortografía ni datos desordenados.\n\n## Errores comunes\n\n- Hacerla demasiado larga, con información que no tiene relación con el cargo.\n- Usar exactamente la misma hoja de vida para todas las vacantes.\n- Tener un correo poco serio, como un apodo o una frase graciosa.\n- Enviarla en un formato que se desconfigura al abrirla en otro equipo, en lugar de PDF.\n- Exagerar o inventar datos: pueden verificarse y hacerte perder la oportunidad.\n\n## Un ejemplo\n\nImagina dos personas que aplican a un cargo de auxiliar de bodega. Laura envía cuatro páginas con todos los cursos que ha hecho desde el colegio. Camilo envía una sola página con su experiencia en inventarios, su manejo de equipos de cargue y un logro concreto: ayudó a reducir errores en los despachos de su turno. Aunque Laura tenga más estudios, Camilo responde mejor a lo que la empresa necesita y es más probable que lo llamen.\n\n## Principio guía\n\nAntes de escribir, pregúntate: ¿qué necesita esta empresa y cómo demuestro que puedo dárselo? Cada línea de tu hoja de vida debe ayudar a responder esa pregunta. Si una línea no ayuda, quítala.\n\nEn las siguientes lecciones armarás tu documento paso a paso: datos de contacto, perfil, experiencia, formación y revisión final. Ten a mano tus certificados, las fechas aproximadas de tus trabajos y los nombres de las empresas donde has estado.","video":"","ejercicio":"Busca una oferta de empleo real que te interese y subraya las 5 palabras o requisitos que más se repiten. Escríbelas en una hoja: serán tu guía para el resto del curso."},{"titulo":"Estructura, formato y datos de contacto","minutos":10,"contenido":"Una buena hoja de vida se entiende de un vistazo. Eso depende más del orden y la limpieza que de colores o diseños llamativos.\n\n## Orden recomendado\n\n- Nombre completo y datos de contacto.\n- Perfil profesional (3 o 4 líneas).\n- Experiencia laboral, de la más reciente a la más antigua.\n- Formación académica y cursos relevantes.\n- Habilidades y herramientas.\n- Referencias (se pueden indicar «disponibles a solicitud» si no tienes espacio).\n\nSi tienes poca experiencia, puedes poner la formación y las habilidades antes de la experiencia. Lo importante es que lo más fuerte para esa vacante quede arriba.\n\n## Datos de contacto\n\nIncluye tu nombre, un número de celular donde de verdad contestes, un correo profesional y tu ciudad o barrio general de residencia. Esto último es útil porque muchas empresas consideran la cercanía al lugar de trabajo.\n\nEl correo debe ser sencillo, por ejemplo, tu nombre y apellido. Si el que tienes es un apodo, crea uno nuevo gratis. Revisa también el mensaje de tu buzón de voz y tu foto de WhatsApp, porque a veces la empresa lo primero que ve es eso.\n\n## Formato\n\n- Una página es ideal; dos solo si tienes mucha experiencia relevante.\n- Letra legible, de tamaño normal, con un solo tipo de fuente.\n- Márgenes cómodos y espacios entre secciones.\n- Guárdala en PDF con un nombre claro, por ejemplo: HojaDeVida_NombreApellido.\n- Si incluyes foto, que sea reciente, de rostro, con fondo sencillo y ropa formal. Si no sabes si ponerla, revisa lo que pide la oferta.\n\n## Ejemplo de nombre de archivo\n\nMalo: documento final 2 (copia).pdf\nBueno: HojaDeVida_AndreaRojas.pdf\n\nQuien recibe cien archivos agradece poder identificar el tuyo sin abrirlo.\n\n## Consejo práctico\n\nPide a una persona de confianza que abra tu PDF en su celular. Muchos reclutadores revisan desde el teléfono, y si tu documento se ve desordenado en pantalla pequeña, debes simplificarlo. También verifica que los números y el correo estén bien escritos: un solo dígito equivocado puede costarte una llamada importante.","video":"","ejercicio":"Crea o revisa tu correo profesional y escribe en una hoja tus datos de contacto tal como aparecerán en la hoja de vida. Pide a alguien que te llame para confirmar que el número está bien escrito."},{"titulo":"Perfil profesional y experiencia con logros","minutos":10,"contenido":"El perfil y la experiencia son las partes que más pesan. Aquí es donde pasas de decir «hice esto» a mostrar «esto fue lo que logré».\n\n## El perfil profesional\n\nSon 3 o 4 líneas que resumen quién eres, qué sabes hacer y qué buscas. Una fórmula sencilla:\n\n- Quién eres (cargo u oficio y años de experiencia, si los tienes).\n- Qué fortalezas tienes.\n- Qué aportas a la empresa.\n\nEjemplo: «Auxiliar administrativa con experiencia en facturación, archivo y atención al cliente. Organizada, puntual y con buen manejo de Excel. Busco aportar orden y rapidez en los procesos de una empresa en crecimiento.»\n\nEvita frases vacías como «persona responsable y proactiva en busca de oportunidades». Todo el mundo las usa y no dicen nada.\n\n## La experiencia laboral\n\nPara cada trabajo escribe: cargo, empresa, ciudad y fechas (mes y año aproximados). Debajo, de 2 a 4 viñetas con lo más importante.\n\n## Tareas vs. logros\n\nUna tarea dice qué hacías. Un logro dice qué cambió gracias a ti. Usa esta estructura: verbo de acción + qué hiciste + resultado.\n\n- Tarea: «Atendía clientes en el almacén.»\n- Logro: «Atendí a los clientes del almacén y resolví reclamos en el momento, lo que mejoró las calificaciones del servicio.»\n\n- Tarea: «Manejaba el inventario.»\n- Logro: «Organicé el inventario por categorías, lo que redujo el tiempo de búsqueda de productos.»\n\nSi tienes cifras reales, úsalas. Si no las tienes, no las inventes: describe el resultado con claridad.\n\n## Verbos útiles\n\nOrganicé, atendí, coordiné, vendí, apoyé, entregué, resolví, aprendí, mejoré, capacité.\n\n## Si has tenido trabajos informales\n\nVender por catálogo, hacer domicilios, cuidar un negocio familiar o trabajar por días también es experiencia. Preséntala con el mismo formato: qué hacías, con quién y qué resultados obtuviste. Lo importante es que sea verdad y que puedas explicarlo en una entrevista.","video":"","ejercicio":"Escoge tu último trabajo (formal o informal) y escribe tres logros con la fórmula verbo + qué hiciste + resultado. Luego escribe tu perfil profesional en máximo cuatro líneas."},{"titulo":"Formación, habilidades y qué hacer si tienes poca experiencia","minutos":10,"contenido":"Si es tu primer empleo o llevas tiempo sin trabajar, tu hoja de vida puede ser igual de convincente. Solo cambia lo que pones en primer plano.\n\n## Formación académica\n\nEscribe el título o nivel alcanzado, la institución y el año. Ordena de lo más reciente a lo más antiguo. Si aún estudias, indícalo: «Técnico en logística, SENA (en curso)». Los cursos cortos cuentan cuando se relacionan con el cargo: servicio al cliente, manipulación de alimentos, Excel, atención en caja, etc. No pongas todos los cursos que hayas hecho; elige los más útiles para esa vacante.\n\n## Habilidades\n\nSepara dos tipos:\n\n- **Técnicas:** lo que sabes hacer, como manejar Excel, facturar, operar una caja registradora, conducir moto, cocinar o usar redes sociales para vender.\n- **Personales:** cómo trabajas, como puntualidad, trabajo en equipo o buena atención. Elige pocas y demuéstralas en la experiencia.\n\nEvita poner porcentajes o barras de nivel; no aportan información real. Mejor escribe «Excel: tablas, fórmulas básicas y filtros».\n\n## Si tienes poca o ninguna experiencia\n\nUsa lo que sí has hecho:\n\n- Voluntariados, trabajos en el colegio o la universidad, proyectos y prácticas.\n- Apoyo en negocios familiares o de tu comunidad.\n- Cursos, certificaciones y habilidades aprendidas por tu cuenta.\n- Logros concretos, como organizar un evento del barrio o ayudar a vender en una feria.\n\nEjemplo: «Apoyé durante dos años la tienda de mi familia: atención a clientes, control de caja y pedidos a proveedores.» Es corto, real y relevante para cargos de ventas o auxiliares.\n\n## Si tienes vacíos de tiempo\n\nNo los escondas con datos falsos. Puedes mencionar lo que hiciste en ese tiempo: cuidar a un familiar, estudiar, emprender un pequeño negocio o buscar empleo mientras te capacitabas. Prepárate para explicarlo con calma y sin pedir disculpas.\n\n## Referencias\n\nTen listas dos o tres personas que hablen bien de tu trabajo, como un jefe anterior o un profesor. Pídeles permiso antes de dar sus datos y avísales cuando creas que pueden recibir una llamada.","video":"","ejercicio":"Haz dos listas: una con tus habilidades técnicas y otra con las personales. Al lado de cada una escribe una situación real donde la hayas demostrado."},{"titulo":"Adaptar, revisar y enviar tu hoja de vida","minutos":10,"contenido":"Tener una hoja de vida base es solo el primer paso. Para destacar, debes ajustarla a cada oferta y enviarla con cuidado.\n\n## Cómo adaptarla en 10 minutos\n\n- Lee la oferta completa y subraya funciones, requisitos y palabras clave.\n- Ajusta tu perfil para que mencione el cargo y lo que la empresa pide.\n- Ordena tus viñetas para que las más relacionadas con la vacante queden primero.\n- Usa en tu texto las mismas palabras de la oferta cuando sean ciertas. Si piden «atención al cliente» y tú escribiste «servicio al público», cambia a la palabra que ellos usan.\n\nNunca agregues algo que no sabes hacer solo porque la oferta lo pide.\n\n## Revisión final\n\nAntes de enviar, revisa esta lista:\n\n- Nombre, teléfono y correo sin errores.\n- Fechas coherentes entre trabajos.\n- Ortografía y tildes revisadas.\n- Mismo formato en todas las secciones.\n- Una sola página si es posible.\n- Archivo en PDF con nombre claro.\n\nLeerla en voz alta ayuda a detectar errores. También sirve pedirle a otra persona que la lea.\n\n## El mensaje de envío\n\nSi envías por correo, escribe un mensaje corto y respetuoso. Ejemplo:\n\nAsunto: Postulación auxiliar administrativo – Juan Pérez\n\nBuenos días. Me interesa la vacante de auxiliar administrativo que vi publicada recientemente. Adjunto mi hoja de vida y quedo atento a cualquier información adicional. Cordialmente, Juan Pérez, celular 300 000 0000.\n\nEl asunto claro y el mensaje breve facilitan que te respondan.\n\n## Después de enviar\n\nLlena un registro sencillo con la empresa, el cargo, la fecha y el medio por el que aplicaste. Así sabrás a quién llamar o escribir de nuevo y evitarás confundirte cuando te contacten.\n\nTambién recuerda contestar con amabilidad cuando te llamen, aunque sea un número desconocido. Muchas oportunidades se pierden por no atender el teléfono.\n\n## Para recordar\n\nUna hoja de vida no se termina nunca: se actualiza con cada logro, cada curso y cada experiencia nueva. Guarda tu versión base y crea copias adaptadas para cada oferta importante.","video":"","ejercicio":"Toma la oferta que elegiste en la primera lección y adapta tu perfil y tus tres logros para esa vacante. Revisa con la lista de verificación y guarda el archivo en PDF."}],"evaluacion":[{"pregunta":"¿Cuál es el objetivo principal de una hoja de vida?","opciones":["Contar toda tu historia personal y académica","Lograr que te llamen a una entrevista","Reemplazar la entrevista de trabajo","Mostrar todos los cursos que has hecho"],"correcta":1,"explicacion":"La hoja de vida es una herramienta para conseguir la entrevista; por eso debe mostrar solo lo que ayuda a la vacante."},{"pregunta":"¿Cuál de estas frases es un logro y no solo una tarea?","opciones":["Atendía clientes en el almacén","Era responsable de la caja","Organicé el inventario por categorías y reduje el tiempo de búsqueda de productos","Trabajé en ventas"],"correcta":2,"explicacion":"Un logro combina una acción con un resultado visible; las demás opciones solo describen funciones."},{"pregunta":"Si tienes poca experiencia laboral, ¿qué es lo más recomendable?","opciones":["Inventar un trabajo para llenar espacio","Dejar la hoja de vida casi en blanco","Incluir voluntariados, negocios familiares, cursos y proyectos reales","Poner solo tus datos personales"],"correcta":2,"explicacion":"Las experiencias informales, los voluntariados y la formación relevante demuestran habilidades sin necesidad de inventar nada."},{"pregunta":"¿Por qué conviene adaptar la hoja de vida a cada oferta?","opciones":["Porque así parece más larga","Porque la empresa necesita ver que respondes a lo que busca, incluyendo sus palabras clave","Porque es obligatorio por ley","Porque así se evita revisarla"],"correcta":1,"explicacion":"Ajustar el perfil y los logros a la vacante muestra interés y ayuda a pasar los filtros por palabras clave."},{"pregunta":"¿Cuál es un buen nombre para el archivo que vas a enviar?","opciones":["documento final 2 (copia)","hv nueva","HojaDeVida_AndreaRojas.pdf","scan0012"],"correcta":2,"explicacion":"Un nombre claro con tu nombre y formato PDF facilita que quien recibe el archivo lo identifique y lo abra sin problemas."}]},{"id":"entrevista-de-trabajo-con-confianza","titulo":"Entrevista de trabajo con confianza","descripcion":"Prepárate para entrevistas presenciales o virtuales: investiga la empresa, responde con ejemplos reales, maneja preguntas difíciles y cierra con seguimiento.","categoria":"Entrevistas","nivel":"Básico","duracionMinutos":60,"paraQuien":"Personas que ya han sido llamadas a entrevista, o quieren estar listas para cuando las llamen.","lecciones":[{"titulo":"Antes de la entrevista: investiga y organízate","minutos":10,"contenido":"Casi toda la seguridad en una entrevista viene de la preparación. Las personas que llegan sabiendo a qué empresa van y qué cargo ocupan se notan de inmediato.\n\n## Qué investigar\n\n- **La empresa:** a qué se dedica, qué productos o servicios ofrece, dónde opera y cómo se presenta en su sitio web o redes sociales.\n- **El cargo:** funciones, requisitos y horarios que menciona la oferta.\n- **Quien te entrevista:** si conoces su nombre, averigua qué cargo tiene en la empresa.\n- **El lugar:** si es presencial, averigua la dirección exacta y cuánto tardas en llegar.\n\nNo necesitas memorizar datos. Con dos o tres cosas concretas basta para decir algo como: «Vi que trabajan con productos para el hogar y me interesó que estén abriendo nuevas sedes».\n\n## Logística\n\n- Confirma la cita por escrito o llamada un día antes, si es posible.\n- Planea llegar con tiempo de sobra. Es mejor esperar en la puerta que llegar corriendo.\n- Si es virtual, prueba tu conexión, cámara, micrófono y la aplicación que usarán.\n- Lleva copias de tu hoja de vida, tu documento de identidad y los certificados que puedan pedirte.\n- Carga tu celular y llévalo en silencio.\n\n## Tu repertorio de historias\n\nPrepara tres o cuatro ejemplos reales de tu vida laboral o personal: algo que lograste, algo que aprendiste de un error y una vez que trabajaste en equipo. Con esas historias podrás responder la mayoría de preguntas sin improvisar.\n\n## Prepara tus preguntas\n\nAl final casi siempre te preguntarán si tienes dudas. Ten listas dos o tres, por ejemplo:\n\n- ¿Cómo es un día normal en este cargo?\n- ¿Cómo es el proceso de inducción?\n- ¿Cuáles son los siguientes pasos de la selección?\n\n## Ejemplo\n\nCarlos va a una entrevista para cajero en un supermercado. Revisa dónde están las sedes, qué horarios maneja el cargo y practica en voz alta cómo presentarse. Cuando le preguntan por qué quiere trabajar allí, responde con calma, mencionando algo concreto de la empresa y su experiencia atendiendo público.","video":"","ejercicio":"Elige una empresa donde te gustaría trabajar. Escribe tres datos que encuentres sobre ella y dos preguntas que le harías a quien te entreviste."},{"titulo":"Primera impresión: presentación y lenguaje corporal","minutos":10,"contenido":"La entrevista empieza desde que llegas, incluso antes de sentarte. Los primeros minutos influyen mucho en cómo te perciben, pero la buena noticia es que son cosas que se pueden practicar.\n\n## Presentación personal\n\nVístete de acuerdo con el cargo, un poco más formal de lo que usarías en el trabajo diario. Lo importante es que la ropa esté limpia, planchada y cómoda. No hace falta ropa costosa: hace falta cuidado. Procura que el cabello, las manos y el calzado estén aseados, y evita perfumes muy fuertes.\n\n## Saludo y actitud\n\n- Saluda con amabilidad a todas las personas que encuentres, incluida la recepción.\n- Da la mano con firmeza si la otra persona lo hace, mira a los ojos y sonríe.\n- Siéntate cuando te lo indiquen y mantén la espalda recta, sin cruzar los brazos con rigidez.\n- Habla con voz clara, a un ritmo tranquilo. Si te pones nervioso, respira antes de responder.\n- No interrumpas. Escucha la pregunta completa.\n\n## Los nervios\n\nSentir nervios es normal y no te descalifica. Puedes decirlo con naturalidad: «Estoy un poco nervioso porque me interesa mucho esta oportunidad». Antes de entrar, respira lento por la nariz y suelta el aire despacio. Lleva agua si lo permiten.\n\n## Entrevista virtual\n\n- Busca un lugar con buena luz frontal y poco ruido.\n- Coloca la cámara a la altura de los ojos.\n- Mira a la cámara cuando hables, no solo a la pantalla.\n- Cierra otras aplicaciones y silencia las notificaciones.\n- Ten a mano agua, papel, lápiz y tu hoja de vida.\n- Si se cae la conexión, escribe o llama de inmediato para avisar.\n\n## Lo que dices con el cuerpo\n\nTu postura comunica interés. Inclinarte levemente hacia adelante, asentir cuando te hablan y evitar mirar el celular dan señales de respeto y atención. Evita hablar mal de antiguos jefes o compañeros, porque suele dejar una mala impresión.\n\n## Un ensayo sencillo\n\nPractica frente a un espejo o grábate en video durante un minuto presentándote. Tal vez notes muletillas como «eh» o «o sea». Con dos o tres ensayos se reducen mucho.","video":"","ejercicio":"Grábate un minuto presentándote: nombre, a qué te dedicas y qué buscas. Míralo y anota una cosa que hiciste bien y una que mejorarías."},{"titulo":"Responder con ejemplos: preguntas frecuentes y método SOAR","minutos":10,"contenido":"Quien entrevista quiere saber cómo has actuado en situaciones reales, porque eso predice cómo actuarás en el nuevo cargo. Por eso las respuestas con ejemplos funcionan mejor que las generales.\n\n## Preguntas muy frecuentes\n\n- Cuéntame sobre ti.\n- ¿Por qué quieres trabajar con nosotros?\n- ¿Cuáles son tus fortalezas y tus aspectos por mejorar?\n- Cuéntame de una situación difícil en el trabajo.\n- ¿Dónde te ves en unos años?\n\n## Cuéntame sobre ti\n\nNo cuentes tu vida entera. Estructúralo en tres partes: quién eres profesionalmente, qué has hecho que sea relevante para el cargo y qué te interesa de esta oportunidad. Dura entre uno y dos minutos.\n\nEjemplo: «Soy técnico en sistemas y llevo dos años apoyando el soporte de computadores en una papelería con servicio de internet. Aprendí a atender a personas con poca experiencia en tecnología y a resolver problemas con rapidez. Me interesa este cargo porque quiero seguir creciendo en soporte técnico.»\n\n## El método SOAR\n\nUsa estas cuatro partes para contar una experiencia:\n\n- **Situación:** ¿cuál era el contexto?\n- **Obstáculo:** ¿qué dificultad había?\n- **Acción:** ¿qué hiciste tú?\n- **Resultado:** ¿qué pasó gracias a eso?\n\nEjemplo: «En la tienda donde trabajaba (situación), un cliente llegó molesto porque su pedido se retrasó (obstáculo). Lo escuché, revisé el pedido, le expliqué qué había pasado y le ofrecí una entrega prioritaria (acción). El cliente se calmó y volvió a comprar (resultado).»\n\n## Fortalezas y debilidades\n\nElige fortalezas reales y respáldalas con un ejemplo. Para el aspecto por mejorar, elige algo real que no sea clave para el cargo y explica cómo lo trabajas: «Antes me costaba hablar en público; ahora me ofrezco a presentar en reuniones pequeñas para practicar».\n\n## Consejo\n\nEvita respuestas de una sola palabra y también las que duran más de dos minutos. Si no entiendes la pregunta, pide que la repitan. Es mejor pensar unos segundos que responder cualquier cosa.","video":"","ejercicio":"Escribe una historia con el método SOAR sobre un momento en el que resolviste un problema. Cuéntala en voz alta en máximo dos minutos."},{"titulo":"Preguntas difíciles: salario, vacíos y salidas anteriores","minutos":10,"contenido":"Algunas preguntas generan incomodidad, pero tienen respuesta. La clave es ser honesto, breve y orientar la conversación hacia el futuro.\n\n## ¿Cuánto quieres ganar?\n\nAntes de la entrevista, averigua cuánto se suele pagar por ese cargo en tu ciudad, consultando ofertas similares o hablando con personas del sector. Ten claro tu mínimo necesario según tus gastos y un rango razonable.\n\nPuedes responder: «Me gustaría conocer el rango que maneja la empresa para este cargo. Según mi experiencia y lo que he visto en el mercado, me sentiría cómodo con un valor dentro de un rango que podamos conversar». Si te preguntan directamente, da un rango, no un único valor. No hables mal de tu sueldo anterior.\n\nTambién conviene preguntar por el tipo de contrato, horarios y prestaciones; son temas normales de la conversación.\n\n## ¿Por qué saliste de tu último trabajo?\n\nResponde con verdad, en pocas palabras y sin criticar. Ejemplos válidos:\n\n- «Terminó mi contrato y busco una oportunidad con más estabilidad.»\n- «Quería crecer y en esa empresa ya no había más posibilidades.»\n- «Fue una decisión de la empresa por reducción de personal. Aprendí mucho allí.»\n\nSi te despidieron por un error, puedes decirlo con madurez: qué pasó, qué aprendiste y cómo cambiaste.\n\n## Vacíos en la hoja de vida\n\nExplica en una o dos frases qué hiciste: estudiar, cuidar a un familiar, trabajar por cuenta propia o buscar empleo mientras te capacitabas. Luego cierra con tu interés actual: «Ahora estoy listo para volver a trabajar a tiempo completo».\n\n## Preguntas personales\n\nA veces preguntan por familia, hijos o planes personales. Si te sientes incómodo, puedes responder de forma breve y volver al tema laboral: «Mi situación personal está organizada y me permite cumplir con el horario». No estás obligado a dar detalles privados.\n\n## No sé la respuesta\n\nSi te preguntan algo técnico que no sabes, no inventes. Di: «No lo he hecho, pero aprendo rápido; por ejemplo, cuando…» y da un ejemplo real de aprendizaje.","video":"","ejercicio":"Escribe tu respuesta para dos preguntas: ¿por qué saliste de tu último trabajo? y ¿cuánto aspiras a ganar? Practícalas en voz alta hasta que suenen naturales."},{"titulo":"Cierre de la entrevista y seguimiento","minutos":10,"contenido":"El final de la entrevista es tu última oportunidad de dejar una buena impresión. Y lo que haces después puede marcar la diferencia entre ser recordado o no.\n\n## Tus preguntas al final\n\nCuando te pregunten si tienes dudas, usa las que preparaste. Evita que tu primera pregunta sea solo sobre descansos o permisos; empieza por el trabajo y el proceso:\n\n- ¿Cuáles serían las prioridades en los primeros meses?\n- ¿Qué características tiene la persona que mejor se desempeña en este cargo?\n- ¿Cuándo esperan tomar una decisión?\n\n## Cierra con una frase clara\n\nAgradece el tiempo y reafirma tu interés. Ejemplo: «Gracias por la conversación. Me quedó más claro cómo es el cargo y me interesa mucho. Estoy disponible para continuar con el proceso». Despídete con un saludo cordial y, si te dieron la mano al inicio, hazlo también al final.\n\n## El mensaje de agradecimiento\n\nEnvía un correo o mensaje breve ese mismo día o al siguiente:\n\nAsunto: Gracias por la entrevista – Nombre Apellido\n\nBuenas tardes, [nombre]. Gracias por recibirme hoy y contarme sobre el cargo de [cargo]. Me pareció muy interesante [algo concreto de la conversación] y confirmo mi interés. Quedo atento a los siguientes pasos. Cordialmente, [tu nombre].\n\nEste gesto muestra interés y buenos modales.\n\n## Cuánto esperar\n\nSi te dieron una fecha, espera hasta que pase. Si no te dijeron nada, puedes escribir con respeto después de unos días hábiles para preguntar cómo va el proceso. Sé amable, no insistas todos los días.\n\n## Si no te seleccionan\n\nEs parte del proceso y no define tu valor. Pide, si es posible, retroalimentación breve: «¿Hay algo que pueda mejorar para futuras oportunidades?». Anota qué preguntas te costaron y practícalas.\n\n## Si te ofrecen el cargo\n\nPide los detalles por escrito: funciones, horario, tipo de contrato y fecha de inicio. Antes de aceptar, asegúrate de entender las condiciones. Lo ideal es que todo quede claro antes de empezar.","video":"","ejercicio":"Redacta un mensaje de agradecimiento para una entrevista imaginaria. Debe tener máximo cinco líneas e incluir un detalle concreto de la conversación."}],"evaluacion":[{"pregunta":"¿Qué es lo más útil de investigar antes de una entrevista?","opciones":["La vida personal de quien te entrevista","A qué se dedica la empresa y qué funciones tiene el cargo","Cuántas personas más están aplicando","Los chismes sobre los empleados"],"correcta":1,"explicacion":"Conocer la empresa y el cargo te permite dar respuestas específicas y mostrar un interés genuino."},{"pregunta":"¿Qué significa la sigla SOAR para responder preguntas de experiencia?","opciones":["Saludo, Oferta, Actitud, Respuesta","Situación, Obstáculo, Acción, Resultado","Salario, Objetivo, Aspiración, Rol","Sinceridad, Orden, Amabilidad, Respeto"],"correcta":1,"explicacion":"El método SOAR ayuda a contar una experiencia real de forma ordenada, desde el contexto hasta el resultado."},{"pregunta":"Si te preguntan por qué saliste de tu último trabajo, ¿qué es lo más recomendable?","opciones":["Hablar mal del jefe para justificarte","Inventar una historia distinta","Responder con honestidad, de forma breve y sin criticar","Negarte a contestar"],"correcta":2,"explicacion":"Una respuesta honesta y respetuosa genera confianza; criticar o mentir puede dejar una mala impresión."},{"pregunta":"Cuando te preguntan cuánto aspiras a ganar, ¿qué conviene hacer?","opciones":["Dar un rango razonable basado en lo que investigaste","Decir que no te importa el dinero","Dar un valor muy alto para negociar","Quedarte callado hasta que cambien de tema"],"correcta":0,"explicacion":"Investigar el mercado y dar un rango muestra preparación y deja espacio para conversar."},{"pregunta":"¿Cuál es una buena práctica después de la entrevista?","opciones":["No escribir nada para no parecer insistente","Llamar varias veces al día para preguntar el resultado","Enviar un mensaje corto de agradecimiento y confirmar tu interés","Publicar en redes lo que te preguntaron"],"correcta":2,"explicacion":"Un mensaje breve de agradecimiento muestra educación e interés, sin presionar."}]},{"id":"busqueda-de-empleo-con-estrategia","titulo":"Búsqueda de empleo con estrategia","descripcion":"Organiza tu búsqueda: define qué buscas, explora empresas y contactos, cuida tu presencia digital y evita estafas. Un método simple para postularte con orden.","categoria":"Búsqueda de empleo","nivel":"Básico","duracionMinutos":60,"paraQuien":"Personas que llevan tiempo enviando hojas de vida sin respuesta o que no saben por dónde empezar a buscar empleo.","lecciones":[{"titulo":"Define qué buscas antes de postularte","minutos":10,"contenido":"Muchas personas envían su hoja de vida a todas las ofertas que ven y se frustran porque no reciben respuesta. Buscar empleo funciona mejor cuando sabes qué quieres y qué puedes ofrecer.\n\n## Tres preguntas clave\n\n- **¿Qué sé hacer?** Revisa tu experiencia, estudios y habilidades, incluyendo las informales.\n- **¿Qué me gustaría hacer?** Piensa en tareas que disfrutas o en las que aprendes rápido.\n- **¿Qué condiciones necesito?** Horario, ubicación, tiempo de desplazamiento, tipo de contrato y un ingreso mínimo para cubrir tus gastos.\n\nCon esas respuestas, elige uno o dos cargos objetivo. Por ejemplo: auxiliar administrativo y asistente de servicio al cliente. Tener pocos objetivos te permite adaptar mejor tu hoja de vida.\n\n## Cargos cercanos\n\nPiensa en cargos relacionados con lo que ya haces. Si has trabajado como mesero, puedes aplicar a atención al cliente, ventas en tienda o apoyo en eventos, porque comparten habilidades de trato con personas, rapidez y trabajo bajo presión.\n\n## Condiciones y límites\n\nAnota cuáles son tus condiciones indispensables y cuáles negociables. Por ejemplo, puedes aceptar un cargo con menor ingreso si te ofrece formación o estabilidad, siempre que cubras tus necesidades básicas. Pensar esto antes evita decisiones apresuradas cuando llega una oferta.\n\n## Tu meta semanal\n\nFíjate metas realistas basadas en acciones y no en resultados que no controlas. Ejemplo:\n\n- Enviar un número razonable de postulaciones bien adaptadas.\n- Contactar a algunas personas de tu red.\n- Mejorar una parte de tu hoja de vida.\n- Practicar una entrevista.\n\nEstas acciones están bajo tu control y mantienen tu motivación incluso cuando todavía no llega la respuesta.\n\n## Ejemplo\n\nMarcela ha trabajado en una panadería y ayudando en un salón de belleza. Se da cuenta de que lo que mejor hace es atender personas. Define como objetivos cargos de servicio al cliente y ventas de mostrador, y aplica solo a ofertas relacionadas, adaptando su hoja de vida a cada una.","video":"","ejercicio":"Completa estas frases: «Sé hacer…», «Me gustaría trabajar en…» y «Necesito que el trabajo cumpla con…». Luego elige dos cargos objetivo."},{"titulo":"Dónde buscar: empresas, calle y comunidad","minutos":10,"contenido":"Las vacantes no aparecen en un solo lugar. Quien combina varias formas de buscar tiene más posibilidades que quien depende de una sola.\n\n## Empieza por las empresas\n\nHaz una lista de diez empresas de tu ciudad que te interesen, relacionadas con tus cargos objetivo. Para cada una, busca su sitio web y revisa si tiene una sección llamada «Trabaja con nosotros» o «Empleo». Muchas también anuncian sus vacantes en sus redes sociales: seguir sus páginas te permite enterarte cuando abren procesos.\n\nSi no encuentras vacantes publicadas, mira si tienen un correo o un formulario para recibir hojas de vida. Enviar una postulación espontánea, con un mensaje corto y respetuoso, puede ponerte en el radar para cuando surja una necesidad.\n\n## Haz un mapa de tu zona\n\nPiensa en los lugares cercanos donde se contrata personal: zonas industriales, centros comerciales, clínicas, colegios, restaurantes, talleres, bodegas, supermercados, hoteles. Camina o recorre esas zonas con tu hoja de vida impresa y pregunta con amabilidad a quién puedes entregarla.\n\n## Búsqueda presencial\n\nEn comercio, restaurantes y servicios, preguntar directamente suele abrir puertas. Preséntate con ropa limpia y ordenada, saluda, di en una frase qué sabes hacer y pregunta si hay vacantes o si pueden guardar tu hoja de vida. Agradece siempre, aunque la respuesta sea negativa.\n\n## Avisos, ferias y jornadas\n\nPresta atención a los avisos en vitrinas y puertas de negocios. Averigua si la alcaldía de tu ciudad, universidades o instituciones de formación organizan ferias o jornadas de empleo. Si estudiaste en alguna institución, pregunta si mantienen contacto con empresas que buscan personal.\n\n## Mensajes que circulan en cadena\n\nA veces recibes ofertas por mensajes reenviados. Úsalos solo como pista: verifica que la empresa exista, que los datos coincidan y que no te pidan dinero ni información sensible. No te dejes llevar por la urgencia del mensaje.\n\n## Ejemplo de rutina\n\n- Lunes: revisar las páginas de tus empresas de interés y postular donde encajes.\n- Miércoles: recorrer una zona de tu mapa y dejar hojas de vida.\n- Viernes: actualizar tu registro y contactar a personas de tu red.\n\nUna rutina corta y constante rinde más que pasar horas desordenadas un solo día.","video":"","ejercicio":"Escribe una lista de diez empresas de tu ciudad que quieras seguir y busca el sitio web o la página de cada una. Luego marca en un mapa o libreta una zona que puedas recorrer esta semana."},{"titulo":"Tu presencia digital: correo, redes y mensajes","minutos":10,"contenido":"Hoy, muchas empresas buscan información sobre los candidatos en internet. Cuidar tu presencia digital no es tener muchas redes: es evitar que algo te perjudique y mostrar lo mejor de ti.\n\n## Busca tu nombre\n\nEscribe tu nombre completo en un buscador y mira qué aparece. Revisa publicaciones, fotos y comentarios antiguos en tus redes personales. Si algo puede dar una mala imagen, elimínalo o ponlo en privado. No tienes que ocultar quién eres, pero sí cuidar lo que cualquiera puede ver.\n\n## Detalles que se notan\n\n- Una foto de perfil clara y respetuosa en WhatsApp y en tus redes.\n- Un nombre de usuario sencillo, preferiblemente tu nombre y apellido.\n- Un estado o descripción neutral, sin frases ofensivas ni quejas sobre empleos anteriores.\n- Un buzón de voz con un saludo cordial.\n\n## Correo profesional\n\nUsa un solo correo para tu búsqueda y revísalo todos los días, incluida la carpeta de spam, porque a veces allí llegan respuestas de empresas. Si quieres, agrega una firma sencilla al final con tu nombre y tu celular.\n\n## WhatsApp y llamadas\n\nMuchos procesos empiezan con un mensaje o una llamada. Responde con cortesía:\n\n- «Buenos días, habla [nombre]. Con gusto, ¿en qué le puedo colaborar?»\n- Si te escriben por mensaje, responde con saludo, sin audios largos ni emojis excesivos.\n- Si no puedes atender, devuelve la llamada o responde pronto y con amabilidad.\n\n## Presentarte en una frase\n\nTen lista una frase corta que diga quién eres y qué buscas. Ejemplo: «Soy auxiliar administrativa con experiencia en facturación y atención al cliente, y busco una oportunidad en la que pueda seguir aprendiendo». La usarás en mensajes, llamadas y conversaciones.\n\n## Mensajes a contactos\n\nCuando escribas a alguien para pedir orientación, sé breve y específico. Ejemplo:\n\n«Hola, [nombre]. Soy [tu nombre], trabajé contigo en [lugar]. Estoy buscando oportunidades como auxiliar de bodega. Si sabes de alguna vacante o puedes orientarme, te lo agradezco mucho. Te comparto mi hoja de vida.»\n\nEl mensaje explica quién eres, qué buscas y qué le pides sin presionar.","video":"","ejercicio":"Busca tu nombre en internet y anota una cosa que ajustarías. Escribe además tu frase de presentación y un mensaje de WhatsApp de cuatro líneas para pedir orientación laboral a un conocido."},{"titulo":"El poder de tus contactos","minutos":10,"contenido":"Muchas oportunidades llegan por recomendación o porque alguien supo a tiempo que estabas buscando trabajo. No se trata de pedir favores, sino de hacer visible lo que sabes hacer.\n\n## Tu red ya existe\n\nHaz una lista de personas que conoces:\n\n- Familiares y amigos que trabajan en distintas empresas.\n- Antiguos jefes y compañeros.\n- Profesores y compañeros de estudio.\n- Vecinos, personas de tu comunidad o iglesia, clientes habituales.\n- Personas de grupos deportivos o cursos.\n\nNo todos podrán darte un empleo, pero cualquiera puede conocer a alguien que contrata.\n\n## Cómo pedir ayuda\n\nEvita decir solo «si sabes de algo, avísame». Es mejor ser específico: «Estoy buscando trabajo como auxiliar de cocina o ayudante de panadería en el sur de la ciudad. Tengo experiencia de dos años en restaurante. ¿Conoces a alguien con quien pueda hablar?».\n\nMientras más claro sea tu pedido, más fácil es que alguien piense en ti.\n\n## Conversaciones de orientación\n\nPuedes pedirle a alguien que trabaje en tu sector unos minutos para preguntarle cómo es el trabajo, qué buscan las empresas y qué recomienda. No pidas empleo directamente en esa conversación; pide consejo. Al final, agradece y pregunta: «¿Hay alguien más con quien me recomiende hablar?».\n\n## Da antes de pedir\n\nCompartir una oferta que no te sirve a ti pero sí a otra persona, felicitar un logro o enviar un agradecimiento fortalece las relaciones. Las redes funcionan en ambos sentidos.\n\n## Agradece y comunica\n\nSi alguien te recomienda o te da un dato, cuéntale cómo te fue, incluso si no resultó. Esa persona seguirá pensando en ti.\n\n## Ejemplo\n\nDaniel buscaba trabajo en logística. Escribió a cinco excompañeros y a un profesor con un mensaje claro. Uno de ellos le comentó de una vacante en su empresa y lo recomendó con el área de selección. Daniel igual pasó por el proceso normal, pero llegó con un voto de confianza.","video":"","ejercicio":"Haz una lista de diez personas de tu entorno a quienes puedas escribir esta semana. Envía mensajes personalizados a al menos tres de ellas."},{"titulo":"Organízate, cuídate de estafas y no te desanimes","minutos":10,"contenido":"Buscar empleo puede ser largo y cansador. Un sistema sencillo y algunas precauciones te ayudan a avanzar con tranquilidad.\n\n## Un registro simple\n\nUsa una libreta o una hoja de cálculo con estas columnas:\n\n- Empresa y cargo.\n- Fecha y medio de postulación.\n- Contacto (nombre, teléfono o correo).\n- Estado: enviada, en entrevista, esperando respuesta, cerrada.\n- Próximo paso y fecha.\n\nAsí sabrás cuándo hacer seguimiento y no te confundirás cuando te llamen de una empresa a la que aplicaste hace semanas.\n\n## Seguimiento\n\nSi pasaron algunos días hábiles sin respuesta, puedes escribir un mensaje corto y cordial: «Buenas tardes, apliqué al cargo de [cargo] el día [fecha] y quisiera saber si hay novedades en el proceso. Gracias por su tiempo». Una sola vez es suficiente; insistir demasiado puede perjudicarte.\n\n## Señales de alerta de estafas\n\nAlgunas ofertas falsas buscan dinero o datos personales. Desconfía si:\n\n- Te piden pagar por inscribirte, por uniforme, por exámenes o por «reservar» el cargo.\n- Prometen ingresos altos, fáciles y rápidos sin experiencia ni proceso de selección.\n- Solo se comunican por mensajería y evitan dar datos de la empresa o una dirección verificable.\n- Te piden claves, códigos que llegan a tu celular o datos bancarios antes de contratarte.\n- Te presionan para decidir inmediatamente.\n\nAntes de ir a una entrevista, verifica que la empresa exista, busca su sitio web y avisa a alguien de confianza dónde estarás. Una empresa seria no cobra por darte trabajo.\n\n## Cuida tu ánimo\n\nLos rechazos y los silencios son parte de la búsqueda y no dicen nada sobre tu valor. Mantén horarios, descansa, haz ejercicio y conversa con alguien. Celebra los avances pequeños: una entrevista lograda, una hoja de vida mejorada, un contacto nuevo.\n\n## Mientras llega el empleo\n\nAprovecha para formarte con cursos gratuitos, hacer voluntariados o generar ingresos temporales. Todo eso suma a tu experiencia y mantiene activa tu rutina.","video":"","ejercicio":"Crea tu registro de postulaciones con las columnas de la lección y anota las tres primeras ofertas a las que vas a aplicar. Escribe también tres señales de alerta que recordarás siempre."}],"evaluacion":[{"pregunta":"¿Por qué conviene definir uno o dos cargos objetivo antes de postularte?","opciones":["Porque así aplicas a menos ofertas y te cansas menos","Porque puedes adaptar mejor tu hoja de vida y tu búsqueda","Porque las empresas lo exigen","Porque solo se permite buscar dos cargos"],"correcta":1,"explicacion":"Tener objetivos claros te permite ajustar tu hoja de vida y dirigir tus esfuerzos a ofertas que realmente encajan contigo."},{"pregunta":"¿Cuál de estas situaciones es una señal de alerta de una posible estafa laboral?","opciones":["La empresa tiene una dirección y un sitio web verificables","Te citan a una entrevista con fecha y hora","Te piden pagar por inscribirte o por reservar el cargo","Te piden tu hoja de vida por correo"],"correcta":2,"explicacion":"Una empresa seria no cobra por darte un empleo. Pedir pagos es una señal de fraude."},{"pregunta":"¿Qué es mejor al pedir ayuda a un contacto para buscar trabajo?","opciones":["Decir solo «avísame si sabes de algo»","Explicar qué cargo buscas, tu experiencia y qué tipo de ayuda necesitas","Pedirle directamente que te contrate","No decir nada para no molestar"],"correcta":1,"explicacion":"Un pedido claro y específico facilita que la otra persona piense en oportunidades concretas para ti."},{"pregunta":"¿Para qué sirve llevar un registro de tus postulaciones?","opciones":["Para presumir cuántas hojas de vida enviaste","Para saber a qué empresas aplicaste, cuándo y cuándo hacer seguimiento","Para reemplazar la hoja de vida","No sirve; es una pérdida de tiempo"],"correcta":1,"explicacion":"El registro te mantiene organizado, evita confusiones cuando te llaman y te indica cuándo hacer seguimiento."},{"pregunta":"¿Cuál es una buena práctica con tu correo electrónico durante la búsqueda de empleo?","opciones":["Usar un apodo gracioso para destacar","Revisarlo a diario, incluida la carpeta de spam","Usar varios correos distintos en cada postulación","Revisarlo una vez al mes"],"correcta":1,"explicacion":"Las respuestas de las empresas pueden llegar en cualquier momento, incluso al spam, por eso conviene revisar a diario."}]}];
+
+var COURSE_PASS = 0.7;           /* se aprueba la evaluación con 70% o más */
+var courseFilter = '';
+var quizPicks = {}, quizResults = {};
+
+function courseById(id){ return COURSES.find(function(x){ return x.id===id; }); }
+function courseMinutes(x){ return x.lecciones.reduce(function(s,l){ return s+(l.minutos||0); }, 0) || x.duracionMinutos || 0; }
+function canTrackCourses(){ return !!(db.session && db.session.role==='candidate'); }
+function myProgress(courseId, uid){
+  uid = uid || (db.session && db.session.id);
+  return (db.progress||[]).find(function(p){ return p.userId===uid && p.courseId===courseId; });
 }
+function ensureProgress(courseId){
+  var p = myProgress(courseId); if(p) return p;
+  p = { id:db.session.id+':'+courseId, userId:db.session.id, courseId:courseId, lecciones:[], puntaje:null, aprobado:false, completado:false, inicio:new Date().toISOString() };
+  if(!db.progress) db.progress = [];
+  db.progress.push(p); return p;
+}
+function courseState(x){
+  var p = canTrackCourses() ? myProgress(x.id) : null, done = p ? p.lecciones.length : 0, total = x.lecciones.length;
+  return { p:p, done:done, total:total, pct:Math.round(100*done/total), aprobado:!!(p&&p.aprobado), completado:!!(p&&p.completado), puntaje:(p&&p.puntaje!=null)?p.puntaje:null };
+}
+function completedCoursesOf(uid){
+  return (db.progress||[]).filter(function(p){ return p.userId===uid && p.completado; }).map(function(p){
+    var x = courseById(p.courseId); return x ? {id:x.id, titulo:x.titulo, fecha:p.fechaCompletado} : null;
+  }).filter(Boolean);
+}
+function persistProgressLocal(){
+  try{ if(db.session) window.localStorage.setItem('jobin_prog_'+db.session.id, JSON.stringify((db.progress||[]).filter(function(p){ return p.userId===db.session.id; }))); }catch(e){}
+}
+function saveProgress(){ saveDB(); if(progressUnavailable) persistProgressLocal(); }
+function checkCompletion(p, x){
+  if(!p.completado && p.aprobado && p.lecciones.length >= x.lecciones.length){ p.completado = true; p.fechaCompletado = new Date().toISOString(); return true; }
+  return false;
+}
+
+/* texto de las lecciones: párrafos, listas con guion, **negrita** y subtítulos con ## (todo escapado, nunca HTML) */
+function mdInline(s){ return esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>'); }
+function mdLite(text){
+  var html = '', inList = false, para = [];
+  function flushPara(){ if(para.length){ html += '<p>'+para.map(mdInline).join('<br>')+'</p>'; para = []; } }
+  function flushList(){ if(inList){ html += '</ul>'; inList = false; } }
+  String(text||'').split('\n').forEach(function(raw){
+    var l = raw.trim();
+    if(!l){ flushPara(); flushList(); return; }
+    if(/^##\s+/.test(l)){ flushPara(); flushList(); html += '<h4 class="md-h">'+mdInline(l.replace(/^##\s+/,''))+'</h4>'; return; }
+    if(/^-\s+/.test(l)){ flushPara(); if(!inList){ html += '<ul>'; inList = true; } html += '<li>'+mdInline(l.replace(/^-\s+/,''))+'</li>'; return; }
+    flushList(); para.push(l);
+  });
+  flushPara(); flushList();
+  return html;
+}
+/* solo se aceptan enlaces de YouTube o Vimeo; el reproductor se arma con el ID, nunca con el enlace crudo */
+function videoEmbedSrc(u){
+  u = String(u||'').trim(); var m;
+  if((m = u.match(/^https:\/\/(?:www\.)?youtube\.com\/watch\?(?:[^#]*&)?v=([\w-]{11})/))) return 'https://www.youtube-nocookie.com/embed/'+m[1];
+  if((m = u.match(/^https:\/\/youtu\.be\/([\w-]{11})/))) return 'https://www.youtube-nocookie.com/embed/'+m[1];
+  if((m = u.match(/^https:\/\/(?:www\.)?vimeo\.com\/(\d+)/))) return 'https://player.vimeo.com/video/'+m[1];
+  return '';
+}
+/* quien está conectado como candidato ve los cursos con su panel; los demás, con la página pública */
+function layoutCourses(inner){
+  if(db.session && db.session.role==='candidate') return layoutApp('candidate','resources', inner);
+  return layoutPublic('<section class="wrap section" style="padding-top:36px;">'+inner+'</section>');
+}
+function setCourseFilter(cat){ courseFilter = cat; render(); }
+
+function courseCardHTML(x){
+  var s = courseState(x);
+  var status = s.completado ? '<span class="pill">✓ Completado</span>' : (s.done ? '<span class="pill" style="background:rgba(255,255,255,0.08);color:var(--white);">En curso</span>' : '');
+  return '<div class="course-card glass" onclick="go(\'#/course/'+x.id+'\')">'+
+    '<div class="row between" style="gap:8px;"><span class="tag">'+esc(x.categoria)+'</span>'+status+'</div>'+
+    '<h3>'+esc(x.titulo)+'</h3>'+
+    '<p class="muted" style="font-size:0.86rem;line-height:1.6;">'+esc(x.descripcion)+'</p>'+
+    '<div class="course-meta"><span>'+esc(x.nivel)+'</span><span>'+x.lecciones.length+' lecciones</span><span>'+courseMinutes(x)+' min</span></div>'+
+    (canTrackCourses() && s.done ? '<div><div class="progress-bar"><span style="width:'+s.pct+'%;"></span></div><div class="muted" style="font-size:0.76rem;margin-top:6px;">'+s.done+' de '+s.total+' lecciones</div></div>' : '')+
+    '<button class="btn btn-primary btn-sm" style="align-self:flex-start;margin-top:4px;">'+(s.completado?'Repasar':(s.done?'Continuar':'Ver curso'))+' '+icon('arrowRight',14)+'</button>'+
+  '</div>';
+}
+function viewResources(){
+  var cats = Array.from(new Set(COURSES.map(function(x){ return x.categoria; })));
+  var list = COURSES.filter(function(x){ return !courseFilter || x.categoria===courseFilter; });
+  return '<div class="section-head"><div><h2>Cursos para tu búsqueda de empleo</h2><p class="muted" style="margin-top:6px;font-size:0.92rem;max-width:62ch;">Gratis, en español y pensados para Colombia. Aprende a armar tu hoja de vida, a prepararte para entrevistas y a buscar empleo con estrategia.</p></div></div>'+
+  '<div class="row gap8" style="flex-wrap:wrap;margin-bottom:20px;"><button class="course-chip '+(courseFilter===''?'on':'')+'" onclick="setCourseFilter(\'\')">Todos</button>'+
+    cats.map(function(k){ return '<button class="course-chip '+(courseFilter===k?'on':'')+'" onclick="setCourseFilter(\''+esc(k)+'\')">'+esc(k)+'</button>'; }).join('')+'</div>'+
+  (list.length ? '<div class="course-grid">'+list.map(courseCardHTML).join('')+'</div>' : '<div class="empty-state glass">'+icon('doc',34)+'<strong>No hay cursos en esta categoría</strong></div>')+
+  '<p class="muted" style="font-size:0.76rem;margin-top:26px;max-width:70ch;line-height:1.6;">Contenido educativo de carácter general. No reemplaza asesoría legal ni laboral. Completar un curso es un reconocimiento dentro de Job-In y no es un título ni una certificación oficial.</p>';
+}
+function viewCourse(id, sub){
+  var x = courseById(id);
+  if(!x) return '<div class="empty-state glass">'+icon('doc',34)+'<strong>Curso no encontrado</strong><div style="margin-top:16px;"><a href="#/resources" class="btn btn-primary">Ver todos los cursos</a></div></div>';
+  if(sub==='quiz') return viewQuiz(x);
+  var n = parseInt(sub,10);
+  if(n>=1 && n<=x.lecciones.length) return viewLesson(x, n-1);
+  return viewCourseOverview(x);
+}
+function viewCourseOverview(x){
+  var s = courseState(x), canTrack = canTrackCourses();
+  var next = 1;
+  if(s.p){ for(var i=0;i<x.lecciones.length;i++){ if(s.p.lecciones.indexOf(i)===-1){ next = i+1; break; } if(i===x.lecciones.length-1) next = 1; } }
+  var startLabel = s.completado ? 'Repasar el curso' : (s.done ? 'Continuar' : 'Empezar curso');
+  var banner = '';
+  if(canTrack && s.completado) banner = '<div class="glass" style="padding:16px 20px;margin:18px 0;border-color:var(--accent);">'+icon('checkCircle',18)+' <strong>¡Curso completado!</strong> <span class="muted" style="font-size:0.86rem;">Quedó guardado en tu perfil como reconocimiento dentro de Job-In. No es un título ni una certificación oficial.</span></div>';
+  else if(!canTrack) banner = '<div class="glass" style="padding:16px 20px;margin:18px 0;"><span class="muted" style="font-size:0.88rem;">'+(db.session ? 'El progreso se guarda solo en cuentas de candidato.' : 'Puedes leer el curso sin registrarte. Si inicias sesión como candidato, guardamos tu progreso y tus resultados.')+'</span>'+(db.session ? '' : ' <a href="#/login" style="color:var(--accent);font-weight:700;">Iniciar sesión</a>')+'</div>';
+  return '<div style="margin-bottom:14px;"><a href="#/resources" class="muted" style="font-size:0.86rem;">← Todos los cursos</a></div>'+
+  '<div class="glass" style="padding:26px;">'+
+    '<span class="tag">'+esc(x.categoria)+'</span>'+
+    '<h2 style="font-size:1.7rem;margin-top:12px;">'+esc(x.titulo)+'</h2>'+
+    '<p class="muted" style="margin-top:10px;line-height:1.7;max-width:70ch;">'+esc(x.descripcion)+'</p>'+
+    '<div class="course-meta" style="margin-top:14px;"><span>'+esc(x.nivel)+'</span><span>'+x.lecciones.length+' lecciones</span><span>'+courseMinutes(x)+' min</span><span>Evaluación final de '+x.evaluacion.length+' preguntas</span></div>'+
+    '<p style="margin-top:14px;font-size:0.9rem;"><strong>Para quién es:</strong> <span class="muted">'+esc(x.paraQuien)+'</span></p>'+
+    (canTrack && s.done ? '<div style="margin-top:18px;max-width:420px;"><div class="progress-bar"><span style="width:'+s.pct+'%;"></span></div><div class="muted" style="font-size:0.78rem;margin-top:6px;">'+s.done+' de '+s.total+' lecciones vistas</div></div>' : '')+
+    banner+
+    '<button class="btn btn-primary" onclick="go(\'#/course/'+x.id+'/'+next+'\')">'+startLabel+' '+icon('arrowRight',15)+'</button>'+
+  '</div>'+
+  '<div class="glass" style="padding:8px 22px;margin-top:16px;"><h4 style="padding:14px 0 6px;">Contenido del curso</h4>'+
+    x.lecciones.map(function(l,i){
+      var done = !!(s.p && s.p.lecciones.indexOf(i)!==-1);
+      return '<div class="lesson-row" onclick="go(\'#/course/'+x.id+'/'+(i+1)+'\')"><div class="lesson-num '+(done?'done':'')+'">'+(done?'✓':(i+1))+'</div><div style="flex:1;"><div class="lesson-title" style="font-weight:600;">'+esc(l.titulo)+'</div></div><span class="muted" style="font-size:0.78rem;">'+(l.minutos||0)+' min</span></div>';
+    }).join('')+
+    '<div class="lesson-row" onclick="go(\'#/course/'+x.id+'/quiz\')"><div class="lesson-num '+(s.aprobado?'done':'')+'">'+(s.aprobado?'✓':'?')+'</div><div style="flex:1;"><div class="lesson-title" style="font-weight:600;">Evaluación final</div>'+(s.puntaje!==null?'<div class="muted" style="font-size:0.76rem;">Tu mejor resultado: '+s.puntaje+'%</div>':'')+'</div><span class="muted" style="font-size:0.78rem;">'+x.evaluacion.length+' preguntas</span></div>'+
+  '</div>';
+}
+function viewLesson(x, i){
+  var l = x.lecciones[i], s = courseState(x), canTrack = canTrackCourses();
+  var done = !!(s.p && s.p.lecciones.indexOf(i)!==-1);
+  var isLast = i === x.lecciones.length-1;
+  var embed = videoEmbedSrc(l.video);
+  var nextHash = isLast ? '#/course/'+x.id+'/quiz' : '#/course/'+x.id+'/'+(i+2);
+  return '<div style="margin-bottom:14px;"><a href="#/course/'+x.id+'" class="muted" style="font-size:0.86rem;">← '+esc(x.titulo)+'</a></div>'+
+  '<div class="muted" style="font-size:0.8rem;margin-bottom:6px;">Lección '+(i+1)+' de '+x.lecciones.length+' · '+(l.minutos||0)+' min'+(done?' · <span style="color:var(--accent);">✓ Vista</span>':'')+'</div>'+
+  '<div class="progress-bar" style="max-width:740px;margin-bottom:18px;"><span style="width:'+Math.round(100*(i+1)/x.lecciones.length)+'%;"></span></div>'+
+  '<h2 style="font-size:1.6rem;margin-bottom:18px;max-width:740px;">'+esc(l.titulo)+'</h2>'+
+  (embed ? '<div class="video-wrap"><iframe src="'+embed+'" title="'+esc(l.titulo)+'" allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>' : '')+
+  '<div class="lesson-body">'+mdLite(l.contenido)+'</div>'+
+  (l.ejercicio ? '<div class="exercise-box"><strong>Ejercicio práctico</strong><p style="margin-top:8px;line-height:1.7;">'+esc(l.ejercicio)+'</p></div>' : '')+
+  '<div class="row gap12" style="flex-wrap:wrap;margin-top:10px;">'+
+    (i>0 ? '<a class="btn btn-ghost" href="#/course/'+x.id+'/'+i+'">← Anterior</a>' : '')+
+    (canTrack ? (done ? '<a class="btn btn-primary" href="'+nextHash+'">'+(isLast?'Ir a la evaluación':'Siguiente lección')+' '+icon('arrowRight',15)+'</a>' : '<button class="btn btn-primary" onclick="completeLesson(\''+x.id+'\','+i+')">Marcar como vista y '+(isLast?'ir a la evaluación':'continuar')+' '+icon('arrowRight',15)+'</button>')
+              : '<a class="btn btn-primary" href="'+nextHash+'">'+(isLast?'Ir a la evaluación':'Siguiente lección')+' '+icon('arrowRight',15)+'</a>')+
+  '</div>'+
+  (!canTrack && !db.session ? '<p class="muted" style="font-size:0.8rem;margin-top:14px;">Inicia sesión como candidato para guardar tu progreso. <a href="#/login" style="color:var(--accent);font-weight:700;">Iniciar sesión</a></p>' : '');
+}
+function completeLesson(courseId, i){
+  var x = courseById(courseId); if(!x || !canTrackCourses()) return;
+  var p = ensureProgress(courseId);
+  if(p.lecciones.indexOf(i)===-1) p.lecciones.push(i);
+  p.lecciones.sort(function(a,b){ return a-b; });
+  var finished = checkCompletion(p, x);
+  saveProgress();
+  if(finished) showToast('¡Completaste el curso!');
+  go(i === x.lecciones.length-1 ? '#/course/'+courseId+'/quiz' : '#/course/'+courseId+'/'+(i+2));
+}
+
+/* ---------- Evaluación final ---------- */
+function viewQuiz(x){
+  var res = quizResults[x.id];
+  if(res) return quizResultHTML(x, res);
+  var s = courseState(x), picks = quizPicks[x.id] = quizPicks[x.id] || [];
+  var need = Math.ceil(COURSE_PASS*x.evaluacion.length);
+  var pending = canTrackCourses() ? (x.lecciones.length - s.done) : 0;
+  return '<div style="margin-bottom:14px;"><a href="#/course/'+x.id+'" class="muted" style="font-size:0.86rem;">← '+esc(x.titulo)+'</a></div>'+
+  '<h2 style="font-size:1.6rem;">Evaluación final</h2>'+
+  '<p class="muted" style="margin:8px 0 18px;max-width:64ch;line-height:1.7;">'+x.evaluacion.length+' preguntas. Para aprobar necesitas al menos '+need+' respuestas correctas. Puedes intentarlo las veces que quieras.</p>'+
+  (pending>0 ? '<div class="glass" style="padding:14px 18px;margin-bottom:16px;font-size:0.86rem;"><span class="muted">Te faltan '+pending+' lecciones por marcar como vistas. Puedes hacer la evaluación ahora, pero el curso se completa cuando termines ambas cosas.</span></div>' : '')+
+  (!db.session ? '<div class="glass" style="padding:14px 18px;margin-bottom:16px;font-size:0.86rem;"><span class="muted">No iniciaste sesión: puedes hacer la evaluación, pero tu resultado no se guardará.</span></div>' : '')+
+  x.evaluacion.map(function(q,qi){
+    return '<div class="quiz-q glass"><div style="font-weight:600;line-height:1.5;">'+(qi+1)+'. '+esc(q.pregunta)+'</div>'+
+      q.opciones.map(function(o,oi){ return '<label class="quiz-opt"><input type="radio" name="q'+qi+'" '+(picks[qi]===oi?'checked':'')+' onchange="quizPick(\''+x.id+'\','+qi+','+oi+')"><span>'+esc(o)+'</span></label>'; }).join('')+'</div>';
+  }).join('')+
+  '<button class="btn btn-primary" style="margin-top:6px;" onclick="submitQuiz(\''+x.id+'\')">Enviar respuestas</button>';
+}
+function quizPick(cid, qi, oi){ (quizPicks[cid] = quizPicks[cid] || [])[qi] = oi; }
+function submitQuiz(cid){
+  var x = courseById(cid); if(!x) return;
+  var picks = quizPicks[cid] || [], total = x.evaluacion.length;
+  for(var i=0;i<total;i++){ if(picks[i]===undefined){ showToast('Responde todas las preguntas antes de enviar.'); return; } }
+  var correct = 0; x.evaluacion.forEach(function(q,qi){ if(picks[qi]===q.correcta) correct++; });
+  var pct = Math.round(100*correct/total), passed = (correct/total) >= COURSE_PASS;
+  quizResults[cid] = { picks:picks.slice(), correct:correct, total:total, pct:pct, passed:passed, finished:false };
+  if(canTrackCourses()){
+    var p = ensureProgress(cid);
+    p.puntaje = Math.max(p.puntaje||0, pct);
+    if(passed) p.aprobado = true;
+    quizResults[cid].finished = checkCompletion(p, x);
+    saveProgress();
+    if(quizResults[cid].finished) showToast('¡Completaste el curso!');
+  }
+  render();
+}
+function retryQuiz(cid){ delete quizResults[cid]; quizPicks[cid] = []; render(); }
+function quizResultHTML(x, res){
+  var s = courseState(x), pending = canTrackCourses() ? (x.lecciones.length - s.done) : 0;
+  var head = res.passed
+    ? '<div class="glass" style="padding:20px;border-color:var(--accent);"><h2 style="font-size:1.4rem;">¡Aprobaste! '+res.correct+' de '+res.total+' ('+res.pct+'%)</h2>'+
+      (s.completado ? '<p style="margin-top:8px;">'+icon('checkCircle',18)+' <strong>Curso completado.</strong> <span class="muted" style="font-size:0.86rem;">Quedó guardado en tu perfil como reconocimiento dentro de Job-In (no es un título ni una certificación oficial).</span></p>'
+        : (pending>0 ? '<p class="muted" style="margin-top:8px;font-size:0.9rem;">Aprobaste la evaluación. Para completar el curso marca las '+pending+' lecciones que te faltan como vistas.</p>'
+        : '<p class="muted" style="margin-top:8px;font-size:0.9rem;">'+(db.session ? '' : 'Inicia sesión como candidato para guardar este resultado.')+'</p>'))+'</div>'
+    : '<div class="glass" style="padding:20px;"><h2 style="font-size:1.4rem;">'+res.correct+' de '+res.total+' ('+res.pct+'%)</h2><p class="muted" style="margin-top:8px;font-size:0.9rem;">Necesitas al menos '+Math.ceil(COURSE_PASS*res.total)+' respuestas correctas. Repasa las explicaciones y vuelve a intentarlo.</p></div>';
+  return '<div style="margin-bottom:14px;"><a href="#/course/'+x.id+'" class="muted" style="font-size:0.86rem;">← '+esc(x.titulo)+'</a></div>'+
+  head+
+  '<div style="margin-top:18px;">'+x.evaluacion.map(function(q,qi){
+    var pick = res.picks[qi];
+    return '<div class="quiz-q glass"><div style="font-weight:600;line-height:1.5;">'+(qi+1)+'. '+esc(q.pregunta)+'</div>'+
+      q.opciones.map(function(o,oi){ var cls = oi===q.correcta ? 'right' : (oi===pick ? 'wrong' : ''); return '<div class="quiz-opt '+cls+'"><span>'+(oi===q.correcta?'✓ ':(oi===pick?'✗ ':''))+esc(o)+'</span></div>'; }).join('')+
+      '<p class="muted" style="font-size:0.84rem;margin-top:10px;line-height:1.6;"><strong style="color:var(--white);">'+(pick===q.correcta?'Correcto. ':'Respuesta correcta. ')+'</strong>'+esc(q.explicacion||'')+'</p></div>';
+  }).join('')+'</div>'+
+  '<div class="row gap12" style="flex-wrap:wrap;margin-top:6px;">'+
+    (res.passed ? '' : '<button class="btn btn-primary" onclick="retryQuiz(\''+x.id+'\')">Intentar de nuevo</button>')+
+    '<a class="btn btn-ghost" href="#/course/'+x.id+'">Volver al curso</a><a class="btn btn-ghost" href="#/resources">Ver más cursos</a></div>';
+}
+/* cursos completados, para mostrarlos en el perfil */
+function completedCoursesHTML(uid, own){
+  var list = completedCoursesOf(uid);
+  return '<div class="profile-block glass"><h4>'+icon('star',17)+' Cursos completados en Job-In</h4>'+
+    (list.length
+      ? list.map(function(x){ return '<div class="exp-item"><div class="t1">'+esc(x.titulo)+'</div><div class="t3">'+(x.fecha?esc(fmtDate(x.fecha)):'')+'</div></div>'; }).join('')+'<p class="muted" style="font-size:0.74rem;margin-top:8px;">Reconocimiento dentro de Job-In; no es un título ni una certificación oficial.</p>'
+      : '<p class="muted" style="font-size:0.85rem;">'+(own ? 'Aún no completas ningún curso. <a href="#/resources" style="color:var(--accent);font-weight:700;">Ver cursos</a>' : 'Aún no ha completado cursos.')+'</p>')+
+  '</div>';
+}
+
 function viewAbout(){
   return '<section class="wrap section" style="max-width:820px;">'+
     '<h2 style="font-size:2rem;">Sobre Job-In</h2>'+
@@ -2365,7 +2619,7 @@ function viewProfile(){
       '<div class="profile-block glass"><h4>'+icon('star',17)+' Habilidades</h4>'+c.habilidades.map(function(h){return '<span class="skill-chip">'+esc(h)+'</span>';}).join('')+'</div>'+
       '<div class="profile-block glass"><h4>'+icon('globe',17)+' Idiomas</h4>'+c.idiomas.map(function(i){return '<div class="exp-item" style="padding:8px 0;"><div class="row between"><span>'+esc(i.idioma)+'</span><span class="muted" style="font-size:0.82rem;">'+esc(i.nivel)+'</span></div></div>';}).join('')+'</div>'+
       '<div class="profile-block glass"><h4>'+icon('checkCircle',17)+' Certificaciones</h4>'+c.certificaciones.map(function(cf){return '<div class="exp-item"><div class="t1">'+esc(cf.nombre)+'</div><div class="t3">'+esc(cf.entidad)+' · '+esc(cf.anio)+'</div></div>';}).join('')+'</div>'+
-      '<div class="profile-block glass"><h4>'+icon('share',17)+' Redes profesionales</h4>'+profileLinksHTML(c)+'</div>'+
+      completedCoursesHTML(c.id, true)+'<div class="profile-block glass"><h4>'+icon('share',17)+' Redes profesionales</h4>'+profileLinksHTML(c)+'</div>'+
     '</div>'+
   '</div>';
 }
@@ -2704,6 +2958,7 @@ function buildMyExport(){
     return { con:partner(t), mensajes:(t.messages||[]).map(function(m){ return {de:m.from, texto:m.text, fecha:m.fecha}; }) };
   });
   out.notificaciones = myNotifications().map(function(n){ return {texto:n.text, fecha:n.fecha, leida:n.leida}; });
+  out.progresoEnCursos = (db.progress||[]).filter(function(p){ return p.userId===s.id; }).map(function(p){ var x = courseById(p.courseId); return { curso:x?x.titulo:p.courseId, leccionesVistas:p.lecciones.length, mejorPuntaje:p.puntaje, completado:!!p.completado, fechaCompletado:p.fechaCompletado||null }; });
   if(role==='candidate'){
     out.postulaciones = db.applications.filter(function(a){ return a.candidateId===s.id; }).map(function(a){
       var j = jobById(a.jobId); return { oferta:j?j.title:a.jobId, empresa:j?companyOf(j).nombre:'', estado:a.estado, fecha:a.fecha, cartaDePresentacion:a.carta||'' };
@@ -2756,6 +3011,7 @@ async function deleteMyAccount(){
     db.threads = db.threads.filter(function(t){ return t.companyId!==id && t.candidateId!==id; });
     db.notifications = db.notifications.filter(function(n){ return n.userId!==id; });
     delete db.savedJobs[id];
+    db.progress = (db.progress||[]).filter(function(p){ return p.userId!==id; });
     db.session = null; saveDB(); go('#/'); render(); showToast('Tu cuenta y tus datos fueron eliminados.');
     return;
   }
@@ -3159,6 +3415,8 @@ function downloadCvPdf(c){
     if((c.habilidades||[]).length){ heading('Habilidades'); para(c.habilidades.join('  -  '), 10, 'normal', [40,40,40], 1); }
     if((c.idiomas||[]).length){ heading('Idiomas'); c.idiomas.forEach(function(i){ para((i.idioma||'')+(i.nivel?' ('+i.nivel+')':''), 10, 'normal', [40,40,40], 0); }); }
     if((c.certificaciones||[]).length){ heading('Certificaciones'); c.certificaciones.forEach(function(x){ para((x.nombre||'')+[x.entidad, x.anio].filter(Boolean).map(function(v){return ' | '+v;}).join(''), 10, 'normal', [40,40,40], 0); }); }
+    var cursosOk = completedCoursesOf(c.id);
+    if(cursosOk.length){ heading('Cursos completados en Job-In'); cursosOk.forEach(function(x){ para(x.titulo, 10, 'normal', [40,40,40], 0); }); }
     if((c.portafolio||[]).length){ heading('Proyectos'); c.portafolio.forEach(function(x){ para((x.nombre||'')+(x.url?' - '+x.url:''), 10, 'normal', [40,40,40], 0); }); }
     doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(150,150,150);
     doc.text('Generado con Job-In', M, 291);
@@ -3180,6 +3438,8 @@ function cvHtmlBody(c){
   if((c.habilidades||[]).length) h += '<h2>Habilidades</h2><p>'+c.habilidades.map(esc).join(' &middot; ')+'</p>';
   if((c.idiomas||[]).length) h += '<h2>Idiomas</h2><p>'+c.idiomas.map(function(i){ return esc(i.idioma||'')+(i.nivel?' ('+esc(i.nivel)+')':''); }).join('<br>')+'</p>';
   if((c.certificaciones||[]).length) h += '<h2>Certificaciones</h2><p>'+c.certificaciones.map(function(x){ return esc(x.nombre||'')+(x.entidad?' | '+esc(x.entidad):'')+(x.anio?' | '+esc(x.anio):''); }).join('<br>')+'</p>';
+  var cursosOk = completedCoursesOf(c.id);
+  if(cursosOk.length) h += '<h2>Cursos completados en Job-In</h2><p>'+cursosOk.map(function(x){ return esc(x.titulo); }).join('<br>')+'</p>';
   if((c.portafolio||[]).length) h += '<h2>Proyectos</h2><p>'+c.portafolio.map(function(x){ return esc(x.nombre||'')+(x.url?' - '+esc(x.url):''); }).join('<br>')+'</p>';
   return h;
 }
@@ -3226,7 +3486,7 @@ function viewCandidateProfile(id){
       '<div class="profile-block glass"><h4>'+icon('star',17)+' Habilidades</h4>'+((cand.habilidades||[]).length ? cand.habilidades.map(function(h){return '<span class="skill-chip">'+esc(h)+'</span>';}).join('') : '<p class="muted" style="font-size:0.85rem;">Sin información.</p>')+'</div>'+
       '<div class="profile-block glass"><h4>'+icon('globe',17)+' Idiomas</h4>'+rows(cand.idiomas,function(i){return '<div class="exp-item" style="padding:8px 0;"><div class="row between"><span>'+esc(i.idioma)+'</span><span class="muted" style="font-size:0.82rem;">'+esc(i.nivel)+'</span></div></div>';})+'</div>'+
       '<div class="profile-block glass"><h4>'+icon('checkCircle',17)+' Certificaciones</h4>'+rows(cand.certificaciones,function(x){return '<div class="exp-item"><div class="t1">'+esc(x.nombre)+'</div><div class="t3">'+esc(x.entidad||'')+' · '+esc(x.anio||'')+'</div></div>';})+'</div>'+
-      '<div class="profile-block glass"><h4>'+icon('share',17)+' Enlaces</h4>'+profileLinksHTML(cand)+'</div>'+
+      completedCoursesHTML(cand.id, false)+'<div class="profile-block glass"><h4>'+icon('share',17)+' Enlaces</h4>'+profileLinksHTML(cand)+'</div>'+
     '</div>'+
   '</div>';
 }
